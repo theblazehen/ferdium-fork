@@ -257,9 +257,15 @@ const createWindow = () => {
   app.on('web-contents-created', (_e, contents) => {
     if (contents.getType() === 'webview') {
       enableWebContents(contents);
-      contents.setWindowOpenHandler(({ url }) => {
-        openExternalUrl(url);
-        return { action: 'deny' };
+      // FORK: Allow ALL webview popups as child BrowserWindows that
+      // inherit the opener's session.  This keeps OAuth sign-in,
+      // target="_blank" links, and everything else in-app.
+      contents.setWindowOpenHandler(({ url, disposition }) => {
+        debug('setWindowOpenHandler ALLOW', {
+          url: url?.slice(0, 80),
+          disposition,
+        });
+        return { action: 'allow' };
       });
 
       // Handle will download event from main process (prevent download dialog)
@@ -487,7 +493,12 @@ if (argv['auth-negotiate-delegate-whitelist']) {
 }
 
 // Apply workaround for https://github.com/electron/electron/pull/26432
-app.commandLine.appendSwitch('disable-features', 'CrossOriginOpenerPolicy');
+// FORK: Also disable UserAgentClientHint to prevent sec-ch-ua headers
+// from leaking Chromium identity (we spoof Firefox UA globally).
+app.commandLine.appendSwitch(
+  'disable-features',
+  'CrossOriginOpenerPolicy,UserAgentClientHint',
+);
 
 // FORK: Use basic password store to bypass cookie encryption issues
 app.commandLine.appendSwitch('password-store', 'basic');
@@ -821,11 +832,10 @@ app.on('activate', () => {
   }
 });
 
-app.on('web-contents-created', (_createdEvent, contents) => {
-  contents.setWindowOpenHandler(({ disposition }) =>
-    disposition === 'foreground-tab' ? { action: 'deny' } : { action: 'allow' },
-  );
-});
+// FORK: Removed conflicting generic setWindowOpenHandler — the
+// webview-specific handler above now handles popup classification.
+// Non-webview contents (main window) keep the default deny behavior
+// set in createWindow().
 
 app.on('will-finish-launching', () => {
   // Protocol handler for macOS

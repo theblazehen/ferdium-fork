@@ -102,7 +102,11 @@ if (document.head) {
   });
 }
 
-// Patching window.open
+// FORK: Patching window.open — delegate ALL opens to Electron's native
+// window.open so the main-process setWindowOpenHandler can classify them
+// (allow OAuth popups in-app, send regular links to system browser).
+// The upstream code short-circuited plain window.open() calls via
+// sendToHost('new-window') which bypassed the main-process classifier.
 const originalWindowOpen = window.open;
 
 window.open = (url, frameName, features): WindowProxy | null => {
@@ -119,12 +123,7 @@ window.open = (url, frameName, features): WindowProxy | null => {
     const checkInterval = setInterval(() => {
       // Has the service changed the URL yet?
       if (newWindow.location.href !== '') {
-        if (features) {
-          originalWindowOpen(newWindow.location.href, frameName, features);
-        } else {
-          // Open the new URL
-          ipcRenderer.sendToHost('new-window', newWindow.location.href);
-        }
+        originalWindowOpen(newWindow.location.href, frameName, features);
         clearInterval(checkInterval);
       }
     }, 0);
@@ -137,16 +136,9 @@ window.open = (url, frameName, features): WindowProxy | null => {
     return newWindow as Window;
   }
 
-  // We need to differentiate if the link should be opened in a popup or in the systems default browser
-  if (!frameName && !features && typeof features !== 'string') {
-    ipcRenderer.sendToHost('new-window', url);
-    return null;
-  }
-
-  if (url) {
-    return originalWindowOpen(url, frameName, features);
-  }
-  return null;
+  // Let all window.open calls go through Electron's native path so the
+  // main-process setWindowOpenHandler can classify and allow/deny them.
+  return originalWindowOpen(url, frameName, features);
 };
 
 // We can't override APIs here, so we first expose functions via 'window.ferdium',

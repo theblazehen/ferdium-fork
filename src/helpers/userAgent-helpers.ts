@@ -1,47 +1,22 @@
-import { cpus } from 'node:os';
-import macosVersion from 'macos-version';
-import { chrome } from 'useragent-generator';
-import {
-  chromeVersion,
-  is64Bit,
-  isMac,
-  isWindows,
-  osArch,
-  osRelease,
-} from '../environment';
+// FORK: Global Firefox user agent.  Electron's Chromium engine leaks its
+// identity via sec-ch-ua Client Hints even when the UA string is spoofed to
+// Chrome.  Using a Firefox UA bypasses Google's embedded-browser detection
+// entirely (Firefox doesn't support Client Hints).  This also contributes
+// to Firefox usage stats — which is a nice side-effect.
+import { is64Bit, isMac, isWindows, osArch } from '../environment';
 
-const macOS = () => {
-  const version = macosVersion() ?? '';
-  let cpuName = cpus()[0].model.split(' ')[0];
-  if (cpuName.includes('(')) {
-    // eslint-disable-next-line prefer-destructuring
-    cpuName = cpuName.split('(')[0];
-  }
-  return `Macintosh; ${cpuName} macOS ${version.replaceAll('.', '_')}`;
-};
+// Keep this roughly current — bump when Firefox ESR moves.
+const FF_VERSION = '148.0';
 
-const windows = () => {
-  const version = osRelease;
-  const [majorVersion, minorVersion] = version.split('.');
-  const archString = is64Bit ? 'Win64' : 'Win32';
-  return `Windows NT ${majorVersion}.${minorVersion}; ${archString}; ${osArch}`;
-};
+const platform = (() => {
+  if (isMac) return `Macintosh; Intel Mac OS X 10.15; rv:${FF_VERSION}`;
+  if (isWindows) return `Windows NT 10.0; Win64; x64; rv:${FF_VERSION}`;
+  const arch = is64Bit ? 'x86_64' : osArch;
+  return `X11; Linux ${arch}; rv:${FF_VERSION}`;
+})();
 
-const linux = () => {
-  const archString = is64Bit ? 'x86_64' : osArch;
-  return `X11; Linux ${archString}`;
-};
+const FIREFOX_UA = `Mozilla/5.0 (${platform}) Gecko/20100101 Firefox/${FF_VERSION}`;
 
-export default function userAgent() {
-  let platformString;
-
-  if (isMac) {
-    platformString = macOS();
-  } else if (isWindows) {
-    platformString = windows();
-  } else {
-    platformString = linux();
-  }
-
-  return chrome({ os: platformString, version: chromeVersion });
+export default function userAgent(): string {
+  return FIREFOX_UA;
 }

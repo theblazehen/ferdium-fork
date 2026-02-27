@@ -734,9 +734,9 @@ export default class ServicesStore extends TypedStore {
 
       if (!service.isAttached) {
         debug('Webview is not attached, initializing');
+        // FORK: openWindow removed — popup handling moved to main process
         service.initializeWebViewEvents({
           handleIPCMessage: this.actions.service.handleIPCMessage,
-          openWindow: this.actions.service.openWindow,
           stores: this.stores,
         });
         service.initializeWebViewListener();

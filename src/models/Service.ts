@@ -10,7 +10,7 @@ import { DEFAULT_SERVICE_ORDER, DEFAULT_SERVICE_SETTINGS } from '../config';
 import { isMac } from '../environment';
 import { todosStore } from '../features/todos';
 import { getFaviconUrl } from '../helpers/favicon-helpers';
-import { isValidExternalURL, normalizedUrl } from '../helpers/url-helpers';
+import { normalizedUrl } from '../helpers/url-helpers';
 import { ifUndefined } from '../jsUtils';
 import type { IRecipe } from './Recipe';
 import UserAgent from './UserAgent';
@@ -413,7 +413,9 @@ export default class Service {
     return this.recipe.partition || `persist:service-${this.id}`;
   }
 
-  initializeWebViewEvents({ handleIPCMessage, openWindow, stores }): void {
+  // FORK: openWindow param removed — new-window event removed in Electron 37,
+  // popup handling moved to setWindowOpenHandler in main process (src/index.ts).
+  initializeWebViewEvents({ handleIPCMessage, stores }): void {
     const webviewWebContents = webContents.fromId(
       this.webview.getWebContentsId(),
     );
@@ -463,31 +465,9 @@ export default class Service {
       }
     });
 
-    this.webview.addEventListener(
-      'new-window',
-      (event, url, frameName, options) => {
-        debug('new-window', event, url, frameName, options);
-        if (!isValidExternalURL(event.url)) {
-          return;
-        }
-        if (
-          event.disposition === 'foreground-tab' ||
-          event.disposition === 'background-tab'
-        ) {
-          openWindow({
-            event,
-            url,
-            frameName,
-            options,
-          });
-        } else {
-          ipcRenderer.send('open-browser-window', {
-            url: event.url,
-            serviceId: this.id,
-          });
-        }
-      },
-    );
+    // FORK: Removed dead 'new-window' webview event listener.
+    // Electron 37 no longer emits this event — popup classification is
+    // handled by setWindowOpenHandler in the main process (src/index.ts).
 
     this.webview.addEventListener('did-start-loading', event => {
       debug('Did start load', this.name, event);

@@ -62,10 +62,9 @@ export default class UserAgent {
     return null;
   }
 
-  @computed get userAgentWithoutChromeVersion(): string {
-    const withChrome = this.defaultUserAgent;
-    return withChrome.replace(/Chrome\/[\d.]+/, 'Chrome');
-  }
+  // FORK: Removed userAgentWithoutChromeVersion — the "chromeless" hack
+  // (sending "Chrome" without a version) actively triggered Google's bot
+  // detection.  We now use a global Firefox UA instead.
 
   @computed get userAgent(): string {
     return this.serviceUserAgentPref || this.defaultUserAgent;
@@ -75,22 +74,12 @@ export default class UserAgent {
     this.webview = webview;
   }
 
-  @action _handleNavigate(url: string): void {
-    if (url.startsWith('https://accounts.google.com')) {
-      debug('Setting user agent to chromeless for url', url);
-      // Set chromeless user agent (without Chrome version) for Google accounts
-      this.webview.userAgent =
-        this.serviceUserAgentPref || this.userAgentWithoutChromeVersion;
-    } else {
-      debug('Setting user agent to default for url', url);
-      // Set default user agent for all other sites
-      this.webview.userAgent =
-        this.serviceUserAgentPref || this.defaultUserAgent;
-    }
-    // Note: We don't reload the URL here (previously done with loadURL() on will-navigate)
-    // because it cancels POST requests, which breaks SSO/SAML authentication flows
-    // (e.g., ACS endpoint requests). The user agent change takes effect on the
-    // current navigation without needing a reload.
+  // FORK: Removed per-domain UA switching for accounts.google.com.
+  // The global Firefox UA + sec-ch-ua header stripping handles Google
+  // auth detection.  Per-navigation UA changes are no longer needed.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  @action _handleNavigate(_url: string): void {
+    this.webview.userAgent = this.serviceUserAgentPref || this.defaultUserAgent;
   }
 
   _addWebviewEvents(webview: ElectronWebView): void {
