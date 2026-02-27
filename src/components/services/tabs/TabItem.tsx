@@ -121,6 +121,7 @@ const styles = {
 
 interface IProps extends WrappedComponentProps, WithStylesProps<typeof styles> {
   showMessageBadgeWhenMutedSetting: boolean;
+  // eslint-disable-next-line react/no-unused-prop-types
   showServiceNameSetting: boolean;
   showMessageBadgesEvenWhenMuted: boolean;
   service: Service;
@@ -254,7 +255,6 @@ class TabItem extends Component<IProps, IState> {
       wakeUpService,
       openSettings,
       showMessageBadgeWhenMutedSetting,
-      showServiceNameSetting,
       showMessageBadgesEvenWhenMuted,
     } = this.props;
     const { intl } = this.props;
@@ -365,6 +365,8 @@ class TabItem extends Component<IProps, IState> {
       service.isMediaBadgeEnabled &&
       service.isMediaPlaying &&
       service.isEnabled;
+    // FORK: always render service names in grouped sidebar rows.
+    const showServiceName = true;
     const mediaBadge = (
       <Icon icon={mdiVolumeSource} className="tab-item__icon" />
     );
@@ -378,7 +380,9 @@ class TabItem extends Component<IProps, IState> {
           'is-active': service.isActive,
           'has-custom-icon': service.hasCustomIcon,
           'is-disabled': !service.isEnabled,
-          'is-label-enabled': showServiceNameSetting,
+          'is-label-enabled': showServiceName,
+          // FORK: Always add horizontal class for workspace-grouped sidebar
+          'tab-item--horizontal': true,
         })}
         onClick={clickHandler}
         onKeyDown={noop}
@@ -394,7 +398,7 @@ class TabItem extends Component<IProps, IState> {
         })}`}
       >
         <img src={service.icon} className="tab-item__icon" alt="" />
-        {showServiceNameSetting && (
+        {showServiceName && (
           <span className="tab-item__label">{service.name}</span>
         )}
         {showNotificationBadge && (

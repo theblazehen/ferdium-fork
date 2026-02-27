@@ -35,7 +35,9 @@ class RecipesScreen extends Component<IProps, IState> {
   constructor(props: IProps) {
     super(props);
 
-    this.customRecipes = readJsonSync(asarRecipesPath('all.json'));
+    // FORK: Avoid crashing settings in dev when build/recipes/all.json is missing.
+    this.customRecipes =
+      readJsonSync(asarRecipesPath('all.json'), { throws: false }) ?? [];
     this.state = {
       needle: null,
       currentFilter: 'featured',

@@ -118,9 +118,13 @@ class AppLayoutContainer extends Component<IProps> {
       />
     );
 
+    // FORK: Pass all services (not workspace-filtered) so grouped sidebar
+    // always has full workspace membership and never appears empty.
+    const allServicesForSidebar = services.all;
+
     const sidebar = (
       <Sidebar
-        services={services.allDisplayed}
+        services={allServicesForSidebar}
         setActive={setActive}
         isAppMuted={settings.all.app.isAppMuted}
         isMenuCollapsed={settings.all.app.isMenuCollapsed}
@@ -139,10 +143,6 @@ class AppLayoutContainer extends Component<IProps> {
         wakeUpService={awake}
         toggleMuteApp={toggleMuteApp}
         toggleCollapseMenu={toggleCollapseMenu}
-        toggleWorkspaceDrawer={
-          this.props.actions.workspaces.toggleWorkspaceDrawer
-        }
-        isWorkspaceDrawerOpen={workspaceStore.isWorkspaceDrawerOpen}
         showServicesUpdatedInfoBar={ui.showServicesUpdatedInfoBar}
         showMessageBadgeWhenMutedSetting={
           settings.all.app.showMessageBadgeWhenMuted

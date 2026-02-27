@@ -18,7 +18,7 @@ import { v4 as uuidV4 } from 'uuid';
 import type { Stores } from '../@types/stores.types';
 import type { Actions } from '../actions/lib/actions';
 import type { ApiInterface } from '../api';
-import { CHECK_INTERVAL, DEFAULT_APP_SETTINGS } from '../config';
+import { DEFAULT_APP_SETTINGS } from '../config';
 import {
   electronVersion,
   isMac,
@@ -230,10 +230,9 @@ export default class AppStore extends TypedStore {
       });
     }, ms('60m'));
 
-    // Check for updates once every 4 hours
-    setInterval(() => this._checkForUpdates(), CHECK_INTERVAL);
-    // Check for an update in 30s (need a delay to prevent Squirrel Installer lock file issues)
-    setTimeout(() => this._checkForUpdates(), ms('30s'));
+    // FORK: Disable periodic update checks
+    // setInterval(() => this._checkForUpdates(), CHECK_INTERVAL);
+    // setTimeout(() => this._checkForUpdates(), ms('30s'));
     ipcRenderer.on('autoUpdate', (_, data) => {
       if (this.updateStatus !== this.updateStatusTypes.FAILED) {
         if (data.available) {
@@ -374,7 +373,12 @@ export default class AppStore extends TypedStore {
     this._readSandboxes();
 
     // Check partitions of the sandboxes that no longer exist
-    const dir = readdirSync(userDataPath('Partitions'));
+    let dir: string[] = [];
+    try {
+      dir = readdirSync(userDataPath('Partitions'));
+    } catch {
+      // FORK: Partitions dir may not exist yet on fresh/dev profiles.
+    }
     dir
       .filter(d => d.startsWith('sandbox-'))
       .forEach(d => {
@@ -410,9 +414,11 @@ export default class AppStore extends TypedStore {
   }
 
   _readSandboxes() {
-    this.sandboxServices = readJsonSync(
-      userDataPath('config', 'sandboxes.json'),
-    );
+    // FORK: Missing sandboxes.json is valid on first run; default to empty.
+    this.sandboxServices =
+      readJsonSync(userDataPath('config', 'sandboxes.json'), {
+        throws: false,
+      }) ?? [];
   }
 
   _writeSandboxes() {
@@ -567,17 +573,7 @@ export default class AppStore extends TypedStore {
   }
 
   @action _checkForUpdates() {
-    if (this.isOnline && this.stores.settings.app.automaticUpdates) {
-      debug('_checkForUpdates: sending event to autoUpdate:check');
-      this.updateStatus = this.updateStatusTypes.CHECKING;
-      ipcRenderer.send('autoUpdate', {
-        action: 'check',
-      });
-    }
-
-    if (this.isOnline && this.stores.settings.app.automaticUpdates) {
-      this.actions.recipe.update();
-    }
+    // FORK: Disable auto-update checks entirely
   }
 
   @action _installUpdate() {

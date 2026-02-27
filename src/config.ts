@@ -591,7 +591,7 @@ export const DEFAULT_APP_SETTINGS = {
   adaptableDarkMode: true,
   accentColor: DEFAULT_ACCENT_COLOR,
   progressbarAccentColor: DEFAULT_ACCENT_COLOR,
-  serviceRibbonWidth: 68,
+  serviceRibbonWidth: 200, // FORK: widen sidebar for workspace-grouped labels.
   sidebarServicesLocation: SIDEBAR_SERVICES_LOCATION_TOPLEFT,
   iconSize: iconSizeBias,
   sentry: true,

@@ -22,6 +22,8 @@ interface IProps {
   enableService: (args: { serviceId: string }) => void;
   hibernateService: (args: { serviceId: string }) => void;
   wakeUpService: (args: { serviceId: string }) => void;
+  shortcutIndexOffset?: number;
+  groupId?: string;
 }
 
 @observer
@@ -44,10 +46,16 @@ class TabBarSortableList extends Component<IProps> {
       showMessageBadgeWhenMutedSetting,
       showServiceNameSetting,
       showMessageBadgesEvenWhenMuted,
+      shortcutIndexOffset = 0,
+      groupId,
     } = this.props;
 
     return (
-      <ul className="tabs">
+      <ul
+        // FORK: each workspace group renders its own sortable list.
+        className="tabs tabs--workspace-group"
+        data-workspace-group-id={groupId}
+      >
         {services.map((service, index) => (
           <TabItem
             key={service.id}
@@ -55,7 +63,7 @@ class TabBarSortableList extends Component<IProps> {
             clickHandler={() => setActive({ serviceId: service.id })}
             service={service}
             index={index}
-            shortcutIndex={index + 1}
+            shortcutIndex={shortcutIndexOffset + index + 1}
             reload={() => reload({ serviceId: service.id })}
             toggleNotifications={() =>
               toggleNotifications({ serviceId: service.id })

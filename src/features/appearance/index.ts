@@ -135,7 +135,7 @@ const generateAccentStyle = (accentColorStr, useHorizontalStyle) => {
 };
 
 const generateServiceRibbonWidthStyle = (
-  widthStr,
+  _widthStr,
   iconSizeStr,
   horizontal,
   isLabelEnabled,
@@ -145,7 +145,15 @@ const generateServiceRibbonWidthStyle = (
   shouldShowDragArea,
   isFullScreen,
 ) => {
-  const width = Number(widthStr);
+  // FORK: Read persisted sidebar width from localStorage; fall back to 200px
+  const SIDEBAR_WIDTH_KEY = 'ferdium-fork-sidebar-width';
+  const storedWidth = Number.parseInt(
+    localStorage.getItem(SIDEBAR_WIDTH_KEY) || '200',
+    10,
+  );
+  const width = Number.isNaN(storedWidth)
+    ? 200
+    : Math.max(150, Math.min(400, storedWidth));
   const iconSize = Number(iconSizeStr) - iconSizeBias;
   const tabItemWidthBias = 1;
   const verticalStyleOffset = 29;
@@ -292,22 +300,28 @@ const generateServiceRibbonWidthStyle = (
   `
     : `
     .sidebar {
-      width: ${width}px !important;
+      /* FORK: no !important — let inline style from drag-resize take precedence */
+      width: ${width}px;
     }
     .tabs {
       justify-content: ${sidebarServicesAlignment};
     }
-    .tab-item {
+    /* FORK: Tab item dimensions handled by .tab-item--horizontal in tabs.scss */
+    .tab-item:not(.tab-item--horizontal) {
       width: ${width}px !important;
       height: ${width - tabItemWidthBias}px !important;
       min-height: ${width - tabItemWidthBias}px !important;
     }
-    .tab-item .tab-item__icon {
+    /* FORK: Override icon size only for non-horizontal (legacy) tab items */
+    .tab-item:not(.tab-item--horizontal) .tab-item__icon {
       width: ${minimumAdjustedIconSize}px !important;
-      ${useGrayscaleServices ? graysacleServices : null},
+    }
+    .tab-item .tab-item__icon {
+      ${useGrayscaleServices ? graysacleServices : null}
     }
     .sidebar__button {
-      font-size: ${width / 3}px !important;
+      /* FORK: Keep button font-size reasonable for wider sidebar */
+      font-size: 22px !important;
     }
     .todos__todos-panel--expanded {
       width: calc(100% - ${300 + width}px) !important;
@@ -356,6 +370,9 @@ const generateVerticalStyle = (widthStr, alwaysShowWorkspaces) => {
   }
   }
 
+  /* FORK: original rule set all sidebar buttons to full width;
+     the SCSS .sidebar__actions .sidebar__button { width: auto !important }
+     override keeps action bar buttons compact */
   .sidebar .sidebar__button {
     width: ${width}px;
   }
@@ -393,7 +410,6 @@ const generateStyle = (settings, app) => {
     grayscaleServicesDim,
     iconSize,
     showDragArea,
-    useHorizontalStyle,
     alwaysShowWorkspaces,
     showServiceName,
   } = settings;
@@ -401,17 +417,27 @@ const generateStyle = (settings, app) => {
   const { isFullScreen } = app;
 
   const shouldShowDragArea = showDragArea && !isFullScreen;
+  // FORK: Grouped sidebar is vertical-only. Legacy horizontal style injects
+  // conflicting CSS that can hide or clip sidebar services.
+  const useLegacyHorizontalStyle = false;
+
+  // FORK: Hard-disable legacy vertical-style link to avoid stale CSS after HMR
+  // or persisted user settings that previously enabled horizontal service ribbon.
+  const staleVerticalLink = document.querySelector('#vertical-style');
+  if (staleVerticalLink) {
+    staleVerticalLink.remove();
+  }
 
   if (
     accentColor.toLowerCase() !== DEFAULT_APP_SETTINGS.accentColor.toLowerCase()
   ) {
-    style += generateAccentStyle(accentColor, useHorizontalStyle);
+    style += generateAccentStyle(accentColor, useLegacyHorizontalStyle);
   }
 
   style += generateServiceRibbonWidthStyle(
     serviceRibbonWidth,
     iconSize,
-    useHorizontalStyle,
+    useLegacyHorizontalStyle,
     showServiceName,
     sidebarServicesLocation,
     useGrayscaleServices,
@@ -423,7 +449,7 @@ const generateStyle = (settings, app) => {
   if (shouldShowDragArea) {
     style += generateShowDragAreaStyle(accentColor);
   }
-  if (useHorizontalStyle) {
+  if (useLegacyHorizontalStyle) {
     style += generateVerticalStyle(serviceRibbonWidth, alwaysShowWorkspaces);
   } else if (document.querySelector('#vertical-style')) {
     const link = document.querySelector('#vertical-style');
@@ -434,6 +460,32 @@ const generateStyle = (settings, app) => {
   if (alwaysShowWorkspaces) {
     style += generateOpenWorkspaceStyle();
   }
+
+  // FORK: Force grouped-sidebar layout primitives so dynamic style clashes
+  // never hide service groups or float the action bar.
+  style += `
+    .sidebar {
+      display: flex !important;
+      flex-direction: column !important;
+    }
+    .sidebar .sidebar__services {
+      display: block !important;
+      flex: 1 1 auto !important;
+      min-height: 0 !important;
+      overflow-y: auto !important;
+      overflow-x: hidden !important;
+    }
+    .sidebar .sidebar__workspace-group-header {
+      display: flex !important;
+    }
+    .sidebar .sidebar__actions {
+      flex: 0 0 auto !important;
+      height: auto !important;
+      max-height: 120px !important;
+      align-content: flex-start !important;
+      align-items: center !important;
+    }
+  `;
 
   style += generateUserCustomCSS();
 

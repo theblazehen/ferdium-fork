@@ -103,17 +103,20 @@ export default class RecipesStore extends TypedStore {
 
     // Check for local updates
     const allJsonFile = asarRecipesPath('all.json');
-    const allJson = readJSONSync(allJsonFile);
+    // FORK: all.json can be missing in dev builds; skip local update scan then.
+    const allJson = readJSONSync(allJsonFile, { throws: false });
     const localUpdates: string[] = [];
 
-    for (const recipe of Object.keys(recipes)) {
-      const version = recipes[recipe];
+    if (allJson) {
+      for (const recipe of Object.keys(recipes)) {
+        const version = recipes[recipe];
 
-      // Find recipe in local recipe repository
-      const localRecipe = allJson.find(r => r.id === recipe);
+        // Find recipe in local recipe repository
+        const localRecipe = allJson.find(r => r.id === recipe);
 
-      if (localRecipe && semver.lt(version, localRecipe.version)) {
-        localUpdates.push(recipe);
+        if (localRecipe && semver.lt(version, localRecipe.version)) {
+          localUpdates.push(recipe);
+        }
       }
     }
 

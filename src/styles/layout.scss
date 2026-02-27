@@ -52,6 +52,24 @@ html {
         filter: grayscale(1);
       }
     }
+
+    .sidebar__actions {
+      /* FORK: dark theme border for horizontal action button bar */
+      border-top-color: $dark-theme-gray-dark;
+    }
+
+    /* FORK: fix workspace group header contrast and hover in dark theme */
+    .sidebar__workspace-group-header {
+      color: $dark-theme-gray-smoke;
+
+      &:hover {
+        background: rgba(255, 255, 255, 0.05);
+      }
+    }
+
+    .sidebar__empty-state {
+      color: $dark-theme-gray-lighter;
+    }
   }
 
   .app-loader .app-loader__title {
@@ -140,13 +158,13 @@ body.win32:not(.isFullScreen) .app .app__content {
 
 .sidebar {
   position: relative;
-  align-items: center;
+  align-items: stretch;
   background: $theme-gray-lightest;
   color: $theme-text-color;
   display: flex;
   flex-direction: column;
   padding-bottom: 10px;
-  text-align: center;
+  text-align: left;
   width: $theme-sidebar-width;
   z-index: 200;
 
@@ -165,6 +183,27 @@ body.win32:not(.isFullScreen) .app .app__content {
       inset 0 0 2px 0 rgba(0, 0, 0, 0.24);
   }
 
+  /* FORK: drag-to-resize handle on sidebar right edge */
+  .sidebar__resize-handle {
+    position: absolute;
+    top: 0;
+    right: -2px;
+    width: 5px;
+    height: 100%;
+    cursor: col-resize;
+    z-index: 1001;
+    background: transparent;
+    @media (prefers-reduced-motion: no-preference) {
+      transition: background 0.15s ease;
+    }
+
+    &:hover,
+    &.is-dragging {
+      background: $theme-brand-primary;
+      opacity: 0.5;
+    }
+  }
+
   .sidebar__add-service {
     color: $theme-gray-light;
     background: $theme-gray-lighter;
@@ -179,7 +218,8 @@ body.win32:not(.isFullScreen) .app .app__content {
     font-size: 24px;
     padding: 7px 0;
     position: relative;
-    width: $theme-sidebar-width;
+    /* FORK: Full sidebar width for workspace-grouped sidebar */
+    width: 100%;
 
     &:hover,
     &:active {
@@ -194,13 +234,85 @@ body.win32:not(.isFullScreen) .app .app__content {
     }
   }
 
-  & > div {
+  .sidebar__actions {
+    /* FORK: horizontal action button bar – dense layout */
     display: flex;
-    overflow-y: scroll;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    padding: 3px 4px;
+    gap: 1px;
+    border-top: 1px solid $theme-gray-lighter;
+    /* FORK: keep action bar content-sized in normal flex flow */
+    flex: 0 0 auto;
+    height: auto !important;
+    max-height: 100px;
+    align-content: flex-start;
+    align-items: center;
+
+    .sidebar__button {
+      /* FORK: compact button sizing for dense horizontal action bar;
+         use !important to beat dynamic inline style from appearance/index.ts */
+      width: auto !important;
+      padding: 4px 6px;
+      height: auto;
+      line-height: 1;
+      /* FORK: smaller action bar icons */
+      font-size: 20px !important;
+    }
+  }
+
+  .sidebar__services {
+    /* FORK: workspace-grouped service list container */
+    display: block;
+    flex: 1;
+    /* FORK: allow services to shrink below content size so actions stay pinned */
+    min-height: 0;
+    overflow-y: auto;
+    padding-top: 6px;
+    /* FORK: reserve space for bottom action bar (reduced for dense layout) */
+    padding-bottom: 40px;
+    width: 100%;
 
     &::-webkit-scrollbar {
       display: none;
     }
+  }
+
+  .sidebar__workspace-group {
+    margin-bottom: 6px;
+  }
+
+  .sidebar__workspace-group-header {
+    /* FORK: workspace section toggle button */
+    align-items: center;
+    color: $theme-gray;
+    display: flex;
+    font-size: 11px;
+    font-weight: 600;
+    gap: 6px;
+    letter-spacing: 0.02em;
+    padding: 6px 10px;
+    text-transform: uppercase;
+    width: 100%;
+
+    /* FORK: add light-theme hover feedback for workspace headers */
+    &:hover {
+      background: rgba(0, 0, 0, 0.05);
+    }
+  }
+
+  .sidebar__workspace-group-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .sidebar__empty-state {
+    /* FORK: show explicit empty-state text when no services are configured */
+    color: $theme-gray-light;
+    font-size: 12px;
+    padding: 8px 12px;
   }
 }
 
