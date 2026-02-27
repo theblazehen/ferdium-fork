@@ -21,6 +21,22 @@ Personal fork of Ferdium with Biscuit-style customizations.
 - Cookies stored at `~/.config/Ferdium[Dev]/Partitions/service-{uuid}/`. The `password-store=basic` switch means no keyring dependency.
 - Theme border-radius comes from THREE sources: SCSS variables (`globals.scss`), legacy theme exports (`themes/legacy/index.ts`), and JS theme objects (`themes/default/index.ts`). All three zeroed, plus a global `*` safety net in `main.scss`.
 
+### Popup / New-Window Handling
+
+Ferdium had multiple interception layers for popups. The fork collapses them to one:
+
+- **Main process `setWindowOpenHandler`** (`src/index.ts`) returns `{ action: 'allow' }` for all webview popups → child BrowserWindows that inherit the opener's session (cookies flow back automatically).
+- **Preload `window.open` patch** (`src/webview/recipe.ts`) delegates ALL calls to `originalWindowOpen()` so the main-process classifier decides. Upstream had a `sendToHost('new-window')` short-circuit that bypassed the main process.
+- Dead `new-window` webview event listener removed from `src/models/Service.ts` (Electron 37 doesn't emit it).
+- Conflicting module-level `setWindowOpenHandler` removed from `src/index.ts` (was overwriting the webview-specific one).
+
+### Session Partitions & Sandboxes
+
+- Default: each service gets `persist:service-{uuid}` when `sandboxServices: true`.
+- Sandbox override: services listed in `~/.config/Ferdium/config/sandboxes.json` share `persist:sandbox-{sandboxId}`.
+- Google services (YouTube, Gmail, Toggl) share a `google` sandbox so auth cookies propagate — sign in via YouTube (which bypasses Google's embedded-browser detection), Gmail picks up the session.
+- When `sandboxServices: false`, ALL services share `persist:general-session` (not recommended — breaks multi-account).
+
 ### Specificity Battles
 
 - `.tab-item.is-active` from dynamic CSS vs `.tab-item--horizontal.is-active` in SCSS — roughly equal specificity. Both now generate left-bar indicators.
@@ -73,6 +89,32 @@ Files:
 
 ENOENT guards for missing `sandboxes.json`, `build/recipes/all.json`, and `Partitions/` directory.
 Files: `src/stores/AppStore.ts`, `src/stores/RecipesStore.ts`, `src/containers/settings/RecipesScreen.tsx`.
+
+### 8. In-app popup windows
+
+All webview popups open as child BrowserWindows instead of system browser. OAuth sign-in, target="_blank" links, and popups all stay in-app.
+
+Files:
+
+- `src/index.ts` — `setWindowOpenHandler` returns `{ action: 'allow' }` for webview contents; removed conflicting module-level handler
+- `src/webview/recipe.ts` — removed `sendToHost('new-window')` short-circuit; all `window.open` calls go through `originalWindowOpen()`
+- `src/models/Service.ts` — removed dead `new-window` event listener (Electron 37); cleaned unused `isValidExternalURL` import
+
+### 9. Global Firefox UA cloaking
+
+Firefox 148 UA string globally, bypassing Google's embedded-browser detection (sec-ch-ua Client Hints). Google applies tiered risk: Gmail (`service=mail`) is stricter than YouTube. Auth via YouTube in a shared sandbox partition, Gmail picks up the session.
+
+Files:
+
+- `src/helpers/userAgent-helpers.ts` — rewritten: returns Firefox 148 UA instead of Chrome
+- `src/models/UserAgent.ts` — removed broken "chromeless" hack (Chrome without version); removed `userAgentWithoutChromeVersion`; simplified `_handleNavigate`
+- `src/index.ts` — added `UserAgentClientHint` to `disable-features` switch to suppress sec-ch-ua headers
+
+### 10. Build optimization
+
+Linux targets reduced to `dir` x64 only (was AppImage, deb, rpm, snap, tar.gz for x64/arm64/armv7l).
+
+File: `electron-builder.yml`
 
 ## Biscuit Migration
 
