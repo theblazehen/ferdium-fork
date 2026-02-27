@@ -40,7 +40,7 @@ import { ifUndefined } from './jsUtils';
 import Settings from './electron/Settings';
 import handleDeepLink from './electron/deepLinking';
 import './electron/exception';
-// eslint-disable-next-line import/no-cycle
+
 import ipcApi from './electron/ipc-api';
 import isPositionValid from './electron/windowUtils';
 import { mainIpcHandler as basicAuthHandler } from './features/basicAuth';
@@ -488,6 +488,14 @@ if (argv['auth-negotiate-delegate-whitelist']) {
 
 // Apply workaround for https://github.com/electron/electron/pull/26432
 app.commandLine.appendSwitch('disable-features', 'CrossOriginOpenerPolicy');
+
+// FORK: Use basic password store to bypass cookie encryption issues
+app.commandLine.appendSwitch('password-store', 'basic');
+
+// FORK: Enable Chrome DevTools Protocol for local debugging
+if (process.env.FERDIUM_CDP) {
+  app.commandLine.appendSwitch('remote-debugging-port', '9222');
+}
 
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
