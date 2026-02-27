@@ -9,32 +9,45 @@
     </a>
 </p>
 
-# Ferdium
+# Ferdium Fork
 
-[![Builds](https://github.com/ferdium/ferdium-app/actions/workflows/builds.yml/badge.svg)](https://github.com/ferdium/ferdium-app/actions/workflows/builds.yml)
-[![Crowdin](https://badges.crowdin.net/ferdium-app/localized.svg)](https://crowdin.com/project/ferdium-app)
+Personal fork of [Ferdium](https://github.com/ferdium/ferdium-app) with Biscuit-style customizations. WM_CLASS stays `ferdium`/`Ferdium` for herbstluftwm/tdrop compatibility.
 
-[![GitHub release (latest by date)](https://img.shields.io/github/v/release/ferdium/ferdium-app?label=Latest%20Release%20Version)](https://github.com/ferdium/ferdium-app/releases/latest)
-[![GitHub release (latest by date including pre-releases)](https://img.shields.io/github/v/release/ferdium/ferdium-app?include_prereleases&label=Pre-release%20Version)](https://github.com/ferdium/ferdium-app/releases)
-![GitHub all releases downloads](https://img.shields.io/github/downloads/ferdium/ferdium-app/total?label=Total%20Releases%20Downloaded&color=ac72b0)
-![GitHub downloads (by tag)](https://img.shields.io/github/downloads/ferdium/ferdium-app/latest/total?color=blue)
+## Fork Changes
 
-[![Open Collective backers](https://img.shields.io/static/v1?label=Contribute%20on%20Open%20Collective&message=Donate%20to%20Ferdium&color=9cf&logo=open-collective)](https://opencollective.com/ferdium#category-CONTRIBUTE)
-<!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
-<a href='#contributors-'><img src='https://img.shields.io/badge/contributors-328-default.svg?logo=github&color=6c64e4' alt='Contributors'/></a>
-<!-- ALL-CONTRIBUTORS-BADGE:END -->
+- **Ctrl+W disabled** — removed app-level Ctrl+W handler so it passes through to webviews
+- **Cookie encryption bypass** — `password-store=basic` for plain-text cookies, easy import/export between machines
+- **Auto-updater disabled** — fork binaries don't match upstream, updater fully disabled
+- **Zero border-radius** — global `* { border-radius: 0 !important }` injected into all webviews and applied via SCSS/theme overrides
+- **Workspace-grouped sidebar** — services shown grouped by workspace with collapsible headers, per-group drag-and-drop reordering, dense layout (28px tab height, 18px icons, 12px labels), left-bar active indicator, and a drag-to-resize handle (150-400px, persisted to localStorage)
+- **CDP debugging** — `FERDIUM_CDP=1` env var enables Chrome DevTools Protocol on port 9222
+- **Dev crash guards** — ENOENT guards for missing `sandboxes.json`, `build/recipes/all.json`, and `Partitions/` directory
+- **Biscuit migration** — `scripts/migrate-biscuit.py` imports tabs, groups, cookies, localStorage, and IndexedDB from Biscuit
 
-- [Ferdium](#ferdium)
-  - [Screenshots](#screenshots)
-  - [Download](#download)
-  - [Migrating from Ferdi](#migrating-from-ferdi)
-  - [Styling](#styling)
-  - [Contributing](#contributing)
-  - [Contributors ✨](#contributors-)
+## Setup
 
-> 🤴🏽 Hard-fork of [Franz](https://github.com/meetfranz/franz), adding awesome features and removing unwanted ones.
+```bash
+git clone --recurse-submodules https://github.com/theblazehen/ferdium-fork
+cd ferdium-fork
+mise install                          # node 22.18.0 + pnpm 10.14.0
+pnpm install
+pnpm --dir recipes install && pnpm --dir recipes package
+node esbuild.mjs                      # initial build
+mise run dev                          # start with CDP debugging
+```
+
+See [AGENTS.md](./AGENTS.md) for architecture notes and detailed file map.
+
+---
+
+<details>
+<summary>Original Ferdium README</summary>
+
+> Hard-fork of [Franz](https://github.com/meetfranz/franz), adding awesome features and removing unwanted ones.
 
 Ferdium is a desktop app that helps you organize how you use your favourite apps by combining them into one application. It is based on Franz - a software already used by thousands of people - with the difference that Ferdium gives you many additional features and doesn't restrict its usage! Furthermore, Ferdium is compatible with your existing Franz account, so you can continue right where you left off. Please find out more about Ferdium and its features on [ferdium.org](https://ferdium.org).
+
+</details>
 
 ## Screenshots
 

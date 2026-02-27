@@ -1,0 +1,25 @@
+[tools]
+node = "22.18.0"
+pnpm = "10.14.0"
+
+[tasks.dev]
+description = "Start esbuild watcher + electron with CDP debugging"
+run = """
+pnpm run dev &
+DEV_PID=$!
+sleep 3
+FERDIUM_CDP=1 pnpm start
+kill $DEV_PID 2>/dev/null
+"""
+
+[tasks.build]
+description = "Build unpacked linux dir"
+run = "pnpm run build -- --linux dir"
+
+[tasks.typecheck]
+description = "Run TypeScript type checking"
+run = "pnpm run typecheck"
+
+[tasks.lint]
+description = "Run ESLint"
+run = "pnpm run lint"
