@@ -42,7 +42,6 @@ import {
   splitModeToggleShortcutKey,
   todosToggleShortcutKey,
   toggleFullScreenKey,
-  workspaceToggleShortcutKey,
 } from '../environment';
 import { ferdiumVersion } from '../environment-remote';
 import { todoActions } from '../features/todos/actions';
@@ -620,10 +619,8 @@ function titleBarTemplateFactory(
           label: intl.formatMessage(menuItems.minimize),
           role: 'minimize',
         },
-        {
-          label: intl.formatMessage(menuItems.close),
-          role: 'close',
-        },
+        // FORK: Removed role:'close' to prevent Ctrl+W from closing the window.
+        // This allows Ctrl+W to pass through to webviews (e.g., for web IDEs).
       ],
     },
     {
@@ -1198,8 +1195,8 @@ class FranzMenu implements StoresProps {
   }
 
   workspacesMenu(): MenuItemConstructorOptions[] {
-    const { workspaces, activeWorkspace, isWorkspaceDrawerOpen } =
-      workspaceStore;
+    // FORK: stop consuming removed workspace drawer toggle state.
+    const { workspaces, activeWorkspace } = workspaceStore;
     const { intl } = window['ferdium'];
 
     const menu: MenuItemConstructorOptions[] = [];
@@ -1213,20 +1210,7 @@ class FranzMenu implements StoresProps {
       enabled: this.stores.user.isLoggedIn,
     });
 
-    // Open workspace drawer:
-    if (!this.stores.settings.app.alwaysShowWorkspaces) {
-      const drawerLabel = isWorkspaceDrawerOpen
-        ? menuItems.closeWorkspaceDrawer
-        : menuItems.openWorkspaceDrawer;
-      menu.push({
-        label: intl.formatMessage(drawerLabel),
-        accelerator: `${workspaceToggleShortcutKey()}`,
-        click: () => {
-          workspaceActions.toggleWorkspaceDrawer();
-        },
-        enabled: this.stores.user.isLoggedIn,
-      });
-    }
+    // FORK: Removed dead workspace drawer toggle menu item and shortcut.
 
     if (!this.stores.settings.app.hideAllServicesWorkspace) {
       menu.push(
