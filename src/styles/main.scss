@@ -34,3 +34,12 @@
 @import './select.scss';
 @import './image-upload.scss';
 @import './slider.scss';
+
+/* FORK: Global hard corners — include pseudo-elements too.
+   Theme variables and SCSS vars are already zeroed, but this catches
+   any hardcoded values or inline styles we missed. */
+*,
+*::before,
+*::after {
+  border-radius: 0 !important;
+}

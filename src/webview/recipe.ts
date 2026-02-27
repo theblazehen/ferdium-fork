@@ -61,6 +61,47 @@ const sessionHandler = new SessionHandler();
 
 const notificationsHandler = new NotificationsHandler();
 
+// FORK: Inject zero border-radius CSS into every webview to eliminate rounded corners.
+// Uses a MutationObserver so it persists even if SPAs remove/replace <head>.
+const FORK_STYLE_ID = 'fork-zero-border-radius';
+function injectForkBorderRadiusCSS() {
+  if (document.querySelector(`#${FORK_STYLE_ID}`)) return;
+  const style = document.createElement('style');
+  style.id = FORK_STYLE_ID;
+  style.textContent =
+    '/* FORK: zero border-radius */ * { border-radius: 0 !important; }';
+  (document.head || document.documentElement).append(style);
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', injectForkBorderRadiusCSS);
+} else {
+  injectForkBorderRadiusCSS();
+}
+
+// FORK: Batch MutationObserver callbacks via requestAnimationFrame to avoid
+// thousands of calls per second on chat apps (Slack, Discord, etc.).
+// Only observe <head> since we only care if the style element gets removed.
+let forkRafPending = false;
+const forkObserver = new MutationObserver(() => {
+  if (!forkRafPending) {
+    forkRafPending = true;
+    requestAnimationFrame(() => {
+      forkRafPending = false;
+      injectForkBorderRadiusCSS();
+    });
+  }
+});
+// FORK: Only observe <head> since we only care about style element removal, not all DOM mutations
+if (document.head) {
+  forkObserver.observe(document.head, { childList: true });
+} else {
+  // head not available yet, wait for it
+  document.addEventListener('DOMContentLoaded', () => {
+    forkObserver.observe(document.head, { childList: true });
+  });
+}
+
 // Patching window.open
 const originalWindowOpen = window.open;
 

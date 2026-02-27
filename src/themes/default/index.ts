@@ -182,7 +182,7 @@ export default (brandPrimary: string) => {
 
     // Badge
     badgeFontSize: uiFontSize - 2,
-    badgeBorderRadius: 50,
+    badgeBorderRadius: 0, // FORK: hard corners
 
     // Modal
     colorModalOverlayBackground: color('#000').alpha(0.8).rgb().string(),
