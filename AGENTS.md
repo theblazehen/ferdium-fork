@@ -92,7 +92,7 @@ Files: `src/stores/AppStore.ts`, `src/stores/RecipesStore.ts`, `src/containers/s
 
 ### 8. In-app popup windows
 
-All webview popups open as child BrowserWindows instead of system browser. OAuth sign-in, target="_blank" links, and popups all stay in-app.
+All webview popups open as child BrowserWindows instead of system browser. OAuth sign-in, target="\_blank" links, and popups all stay in-app.
 
 Files:
 
@@ -110,7 +110,25 @@ Files:
 - `src/models/UserAgent.ts` — removed broken "chromeless" hack (Chrome without version); removed `userAgentWithoutChromeVersion`; simplified `_handleNavigate`
 - `src/index.ts` — added `UserAgentClientHint` to `disable-features` switch to suppress sec-ch-ua headers
 
-### 10. Build optimization
+### 10. Live favicon in sidebar
+
+All services get their actual site favicon via the `page-favicon-updated` webview event, replacing the static recipe SVG. Falls back to Google S2 proxy (if `useFavicon` enabled), then recipe default. Custom user icons (`iconUrl`) always take priority. Favicon survives hibernation (stale icon retained).
+
+Files:
+
+- `src/models/Service.ts` — `@observable liveFaviconUrl`, `@action _didUpdateFavicon`, `page-favicon-updated` listener, modified `@computed get icon()` priority chain
+
+### 11. Toggl timer in sidebar
+
+Parses Toggl's live page title (`HH:MM:SS - description - project • Toggl Track`) via `page-title-updated` webview event. Displays elapsed time inline in the sidebar tab item with monospace styling. Title tooltip shows the task description and project.
+
+Files:
+
+- `src/models/Service.ts` — `@observable livePageTitle`, `@action _didUpdatePageTitle`, `page-title-updated` listener
+- `src/components/services/tabs/TabItem.tsx` — Toggl timer display after label (regex parse, recipe ID check)
+- `src/styles/tabs.scss` — `.tab-item__status-text` styling (10px monospace, 60% opacity)
+
+### 12. Build optimization
 
 Linux targets reduced to `dir` x64 only (was AppImage, deb, rpm, snap, tar.gz for x64/arm64/armv7l).
 

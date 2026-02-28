@@ -212,6 +212,15 @@
       flex-shrink: 0;
     }
 
+    /* FORK: Status text (e.g., Toggl running timer elapsed time) */
+    .tab-item__status-text {
+      font-size: 10px;
+      font-family: 'JetBrains Mono', 'Fira Code', monospace;
+      opacity: 0.6;
+      flex-shrink: 0;
+      white-space: nowrap;
+    }
+
     &.is-active {
       /* FORK: left vertical bar indicator, consistent with base .tab-item.is-active */
       box-shadow: inset 3px 0 0 0 $theme-brand-primary;

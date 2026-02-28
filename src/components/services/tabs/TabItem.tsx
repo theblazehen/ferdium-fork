@@ -401,6 +401,24 @@ class TabItem extends Component<IProps, IState> {
         {showServiceName && (
           <span className="tab-item__label">{service.name}</span>
         )}
+        {/* FORK: Extract and display timer from Toggl page title.
+            Toggl uses three formats depending on duration:
+              "51 sec - desc - proj • Toggl Track"
+              "01:09 min - desc - proj • Toggl Track"
+              "01:15:28 - desc - proj • Toggl Track"  */}
+        {service.recipe?.id === 'toggl' &&
+          service.livePageTitle &&
+          (() => {
+            const match = service.livePageTitle.match(
+              /^(\d+(?::\d{2}){0,2}\s*(?:sec|min)?)\s+-\s+(.+?)\s+[•·]\s+Toggl\s+Track$/,
+            );
+            if (!match) return null;
+            return (
+              <span className="tab-item__status-text" title={match[2]}>
+                {match[1]}
+              </span>
+            );
+          })()}
         {showNotificationBadge && (
           <>
             {service.unreadDirectMessageCount > 0 && (

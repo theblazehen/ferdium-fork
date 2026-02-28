@@ -142,6 +142,14 @@ export default class Service {
 
   @observable useFavicon: boolean = DEFAULT_SERVICE_SETTINGS.useFavicon;
 
+  // FORK: Live favicon captured from webview's page-favicon-updated event.
+  // Transient — not persisted. Survives hibernation (stale icon > S2 fallback).
+  @observable liveFaviconUrl: string | null = null;
+
+  // FORK: Live page title from webview's page-title-updated event.
+  // Used to extract timer info for Toggl and similar services.
+  @observable livePageTitle: string | null = null;
+
   @action _setAutoRun() {
     if (!this.isEnabled) {
       this.webview = null;
@@ -293,6 +301,23 @@ export default class Service {
     this.isMediaPlaying = false;
   }
 
+  // FORK: Update live favicon from webview event
+  @action _didUpdateFavicon(favicons: string[]): void {
+    const url = favicons.find(
+      u => /^https?:\/\//.test(u) || /^data:image\//.test(u),
+    );
+    if (url && url !== this.liveFaviconUrl) {
+      this.liveFaviconUrl = url;
+    }
+  }
+
+  // FORK: Update live page title from webview event
+  @action _didUpdatePageTitle(title: string): void {
+    if (title !== this.livePageTitle) {
+      this.livePageTitle = title;
+    }
+  }
+
   @computed get shareWithWebview(): object {
     return {
       id: this.id,
@@ -359,10 +384,7 @@ export default class Service {
   }
 
   @computed get icon(): string {
-    if (this.useFavicon) {
-      return getFaviconUrl(this.url);
-    }
-
+    // Custom icon set by user always wins
     if (this.iconUrl) {
       if (needsToken()) {
         let url: URL;
@@ -380,6 +402,16 @@ export default class Service {
         }
       }
       return this.iconUrl;
+    }
+
+    // FORK: Live favicon from webview — actual site icon, updated in real time.
+    // Falls back to Google S2 proxy if webview hasn't emitted yet.
+    if (this.liveFaviconUrl) {
+      return this.liveFaviconUrl;
+    }
+
+    if (this.useFavicon) {
+      return getFaviconUrl(this.url);
     }
 
     if (this.recipe.defaultIcon) {
@@ -518,6 +550,17 @@ export default class Service {
     this.webview.addEventListener('media-paused', event => {
       debug('Stopped Playing media', this.name, event);
       this._didMediaPaused();
+    });
+
+    // FORK: Capture live favicon from webview
+    this.webview.addEventListener('page-favicon-updated', (event: any) => {
+      debug('Favicon updated', this.name, event.favicons);
+      this._didUpdateFavicon(event.favicons ?? []);
+    });
+
+    // FORK: Capture live page title for sidebar display (e.g., Toggl timer)
+    this.webview.addEventListener('page-title-updated', (event: any) => {
+      this._didUpdatePageTitle(event.title ?? '');
     });
 
     if (webviewWebContents) {
