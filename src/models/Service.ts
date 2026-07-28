@@ -150,6 +150,17 @@ export default class Service {
   // Used to extract timer info for Toggl and similar services.
   @observable livePageTitle: string | null = null;
 
+  // FORK: Hibernation screenshot — JPEG data URL captured before webview unmounts.
+  // Transient (not persisted). Displayed while hibernating instead of 😴 emoji.
+  @observable hibernationScreenshotUrl: string | null = null;
+
+  // FORK: True while webview is reloading after waking from hibernation.
+  // Keeps the screenshot visible as a backdrop to prevent white flash.
+  @observable isWakingUp: boolean = false;
+
+  // FORK: Handle for wake-up safety timeout, cleared on re-hibernate or new wake
+  _wakeUpTimeout: ReturnType<typeof setTimeout> | null = null;
+
   @action _setAutoRun() {
     if (!this.isEnabled) {
       this.webview = null;
@@ -271,11 +282,19 @@ export default class Service {
   @action _didStopLoading(): void {
     this.isLoading = false;
     this.isLoadingPage = false;
+    // FORK: Wake-up transition complete
+    if (this.isWakingUp) {
+      this.isWakingUp = false;
+    }
   }
 
   @action _didLoad(): void {
     this.isLoading = false;
     this.isLoadingPage = false;
+    // FORK: Wake-up transition complete
+    if (this.isWakingUp) {
+      this.isWakingUp = false;
+    }
 
     if (!this.isError) {
       this.isFirstLoad = false;
@@ -287,10 +306,18 @@ export default class Service {
     this.errorMessage = event.errorDescription;
     this.isLoading = false;
     this.isLoadingPage = false;
+    // FORK: Wake-up transition aborted on load failure
+    if (this.isWakingUp) {
+      this.isWakingUp = false;
+    }
   }
 
   @action _hasCrashed(): void {
     this.hasCrashed = true;
+    // FORK: Wake-up transition aborted on crash
+    if (this.isWakingUp) {
+      this.isWakingUp = false;
+    }
   }
 
   @action _didMediaPlaying(): void {
@@ -304,7 +331,7 @@ export default class Service {
   // FORK: Update live favicon from webview event
   @action _didUpdateFavicon(favicons: string[]): void {
     const url = favicons.find(
-      u => /^https?:\/\//.test(u) || /^data:image\//.test(u),
+      u => /^https?:\/\//.test(u) || u.startsWith('data:image/'),
     );
     if (url && url !== this.liveFaviconUrl) {
       this.liveFaviconUrl = url;

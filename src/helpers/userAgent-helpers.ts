@@ -1,22 +1,38 @@
-// FORK: Global Firefox user agent.  Electron's Chromium engine leaks its
-// identity via sec-ch-ua Client Hints even when the UA string is spoofed to
-// Chrome.  Using a Firefox UA bypasses Google's embedded-browser detection
-// entirely (Firefox doesn't support Client Hints).  This also contributes
-// to Firefox usage stats — which is a nice side-effect.
-import { is64Bit, isMac, isWindows, osArch } from '../environment';
+import { cpus } from 'node:os';
+import macosVersion from 'macos-version';
+import {
+  chromeVersion,
+  is64Bit,
+  isMac,
+  isWindows,
+  osArch,
+  osRelease,
+} from '../environment';
 
-// Keep this roughly current — bump when Firefox ESR moves.
-const FF_VERSION = '148.0';
+const macOS = () => {
+  const version = macosVersion() ?? '';
+  let cpuName = cpus()[0].model.split(' ')[0];
+  if (cpuName.includes('(')) {
+    [cpuName] = cpuName.split('(');
+  }
+  return `Macintosh; ${cpuName} macOS ${version.replaceAll('.', '_')}`;
+};
 
-const platform = (() => {
-  if (isMac) return `Macintosh; Intel Mac OS X 10.15; rv:${FF_VERSION}`;
-  if (isWindows) return `Windows NT 10.0; Win64; x64; rv:${FF_VERSION}`;
-  const arch = is64Bit ? 'x86_64' : osArch;
-  return `X11; Linux ${arch}; rv:${FF_VERSION}`;
-})();
+const windows = () => {
+  const [majorVersion, minorVersion] = osRelease.split('.');
+  const archString = is64Bit ? 'Win64' : 'Win32';
+  return `Windows NT ${majorVersion}.${minorVersion}; ${archString}; ${osArch}`;
+};
 
-const FIREFOX_UA = `Mozilla/5.0 (${platform}) Gecko/20100101 Firefox/${FF_VERSION}`;
+const linux = () => {
+  const archString = is64Bit ? 'x86_64' : osArch;
+  return `X11; Linux ${archString}`;
+};
 
+// FORK: Keep Electron's Chromium fingerprint internally consistent. Google
+// rejects a Firefox UA backed by Chromium, while this standards-correct UA
+// matches the actual engine and fixes the malformed upstream Safari token.
 export default function userAgent(): string {
-  return FIREFOX_UA;
+  const platformString = isMac ? macOS() : isWindows ? windows() : linux();
+  return `Mozilla/5.0 (${platformString}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion} Safari/537.36`;
 }

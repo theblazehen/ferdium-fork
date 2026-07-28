@@ -61,8 +61,42 @@ window.addEventListener('mouseup', e => {
   }
 });
 
-// Prevent drag and drop into window from redirecting
-window.addEventListener('dragover', event => event.preventDefault());
-window.addEventListener('drop', event => event.preventDefault());
-window.addEventListener('dragover', event => event.stopPropagation());
-window.addEventListener('drop', event => event.stopPropagation());
+// FORK: Prevent drag-and-drop from navigating the host window,
+// but allow drag events to flow through to webviews for file uploads.
+const isOverWebview = (event: DragEvent): boolean => {
+  // Electron retargets guest drag events to react-electron-web-view's wrapper,
+  // so event.target alone is not enough. Prefer the composed path, then fall
+  // back to geometry for wrapper/overlay targets.
+  if (
+    event
+      .composedPath()
+      .some(
+        target =>
+          target instanceof Element &&
+          target.tagName.toLowerCase() === 'webview',
+      )
+  ) {
+    return true;
+  }
+
+  return [...document.querySelectorAll('webview')].some(webview => {
+    const rect = webview.getBoundingClientRect();
+    return (
+      event.clientX >= rect.left &&
+      event.clientX <= rect.right &&
+      event.clientY >= rect.top &&
+      event.clientY <= rect.bottom
+    );
+  });
+};
+
+window.addEventListener('dragover', event => {
+  if (!isOverWebview(event)) {
+    event.preventDefault();
+  }
+});
+window.addEventListener('drop', event => {
+  if (!isOverWebview(event)) {
+    event.preventDefault();
+  }
+});

@@ -105,4 +105,67 @@
     position: absolute;
     z-index: 110;
   }
+
+  /* FORK: Hibernation screenshot overlay — replaces 😴 emoji with last captured state */
+  .services__hibernation-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    background: #1a1a1a;
+  }
+
+  .services__hibernation-screenshot {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    filter: brightness(0.7) saturate(0.8);
+    pointer-events: none;
+  }
+
+  .services__hibernation-badge {
+    position: absolute;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.6);
+    color: rgba(255, 255, 255, 0.8);
+    padding: 6px 16px;
+    border-radius: 0; /* FORK: zero border-radius */
+    font-size: 12px;
+    pointer-events: none;
+    z-index: 1;
+    white-space: nowrap;
+  }
+
+  .services__hibernation-fallback {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+  }
+
+  /* FORK: Wake-up backdrop — screenshot above loading webview to prevent white flash.
+     z-index 50 sits above the webview element (no explicit z-index) but below
+     info layers (110). Removed once did-stop-loading fires. */
+  .services__wakeup-backdrop {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    z-index: 50;
+    pointer-events: none;
+    filter: brightness(0.85);
+  }
 }

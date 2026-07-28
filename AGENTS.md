@@ -128,7 +128,13 @@ Files:
 - `src/components/services/tabs/TabItem.tsx` — Toggl timer display after label (regex parse, recipe ID check)
 - `src/styles/tabs.scss` — `.tab-item__status-text` styling (10px monospace, 60% opacity)
 
-### 12. Build optimization
+### 12. File drag-and-drop into webviews
+
+Upstream had blanket `dragover`/`drop` `preventDefault()` + `stopPropagation()` on the host renderer's `window` to prevent accidental file-navigation. This competed with webview guests for drop target ownership, causing flickering drop zones and lost drops. Fixed by skipping `preventDefault()` when the drag target is a `<webview>` element.
+
+File: `src/app.tsx`
+
+### 13. Build optimization
 
 Linux targets reduced to `dir` x64 only (was AppImage, deb, rpm, snap, tar.gz for x64/arm64/armv7l).
 

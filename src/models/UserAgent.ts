@@ -7,9 +7,6 @@ const debug = require('../preload-safe-debug')('Ferdium:UserAgent');
 
 export default class UserAgent {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  _willNavigateListener = (_event: any): void => {};
-
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   _didNavigateListener = (_event: any): void => {};
 
   @observable.ref webview: ElectronWebView = null;
@@ -62,9 +59,9 @@ export default class UserAgent {
     return null;
   }
 
-  // FORK: Removed userAgentWithoutChromeVersion — the "chromeless" hack
-  // (sending "Chrome" without a version) actively triggered Google's bot
-  // detection.  We now use a global Firefox UA instead.
+  @computed get userAgentWithoutChromeVersion(): string {
+    return this.defaultUserAgent.replace(/Chrome\/[\d.]+/, 'Chrome');
+  }
 
   @computed get userAgent(): string {
     return this.serviceUserAgentPref || this.defaultUserAgent;
@@ -74,19 +71,23 @@ export default class UserAgent {
     this.webview = webview;
   }
 
-  // FORK: Removed per-domain UA switching for accounts.google.com.
-  // The global Firefox UA + sec-ch-ua header stripping handles Google
-  // auth detection.  Per-navigation UA changes are no longer needed.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  @action _handleNavigate(_url: string): void {
-    this.webview.userAgent = this.serviceUserAgentPref || this.defaultUserAgent;
+  @action _handleNavigate(url: string): void {
+    // FORK: Google rejects the normal embedded Chromium UA after identifying
+    // an existing account. Upstream's versionless Chrome token selects its
+    // supported WebLite flow. Apply it only after navigation: changing the UA
+    // during will-navigate cancels pending POST/SAML navigations in Electron.
+    if (url.startsWith('https://accounts.google.com')) {
+      debug('Setting Google WebLite user agent for url', url);
+      this.webview.userAgent =
+        this.serviceUserAgentPref || this.userAgentWithoutChromeVersion;
+    } else {
+      this.webview.userAgent =
+        this.serviceUserAgentPref || this.defaultUserAgent;
+    }
   }
 
   _addWebviewEvents(webview: ElectronWebView): void {
     debug('Adding event handlers');
-
-    this._willNavigateListener = event => this._handleNavigate(event.url);
-    webview.addEventListener('will-navigate', this._willNavigateListener);
 
     this._didNavigateListener = event => this._handleNavigate(event.url);
     webview.addEventListener('did-navigate', this._didNavigateListener);
@@ -95,7 +96,6 @@ export default class UserAgent {
   _removeWebviewEvents(webview: ElectronWebView): void {
     debug('Removing event handlers');
 
-    webview.removeEventListener('will-navigate', this._willNavigateListener);
     webview.removeEventListener('did-navigate', this._didNavigateListener);
   }
 }

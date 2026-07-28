@@ -48,8 +48,12 @@ import type Service from '../models/Service';
 // This will cause the service to fail loading
 // As the message API is not actually needed, we'll add this shim sendMessage
 // function in order for darkreader to continue working
-// @ts-expect-error Fix this
-window.chrome.runtime.sendMessage = noop;
+// FORK: Keep this defensive for services that redefine Chromium globals.
+// @ts-expect-error Fix this - window.chrome is not part of the DOM typings
+if (window.chrome?.runtime) {
+  // @ts-expect-error Same as above
+  window.chrome.runtime.sendMessage = noop;
+}
 
 const debug = require('../preload-safe-debug')('Ferdium:Plugin');
 

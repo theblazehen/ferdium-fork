@@ -662,6 +662,22 @@ export default class ServicesStore extends TypedStore {
 
     for (const s of this.all) {
       if (s.isActive) {
+        // FORK: Capture deactivation screenshot for hibernation display.
+        // Fire-and-forget async — grab ref while webview is still mounted.
+        if (s.webview && s.isHibernationEnabled) {
+          const { webview } = s;
+          webview
+            .capturePage()
+            .then(
+              action('setDeactivationScreenshot', nativeImage => {
+                if (!nativeImage.isEmpty()) {
+                  s.hibernationScreenshotUrl = nativeImage.toDataURL();
+                }
+              }),
+            )
+            .catch(error => debug('Deactivation screenshot failed:', error));
+        }
+
         s.lastUsed = Date.now();
         this._setIsActive(s, false);
       }
@@ -1169,6 +1185,31 @@ export default class ServicesStore extends TypedStore {
 
     debug(`Hibernate ${service.name}`);
 
+    // FORK: Initiate screenshot capture BEFORE setting isHibernationRequested,
+    // because that flag triggers React to unmount the webview. capturePage()
+    // reads the compositing buffer synchronously on call, the Promise is just
+    // for the result encoding.
+    if (service.webview) {
+      service.webview
+        .capturePage()
+        .then(
+          action('setHibernationScreenshot', nativeImage => {
+            if (!nativeImage.isEmpty()) {
+              service.hibernationScreenshotUrl = nativeImage.toDataURL();
+            }
+          }),
+        )
+        .catch(error =>
+          debug(`Screenshot capture failed for ${service.name}:`, error),
+        );
+    }
+
+    // FORK: Clear any pending wake-up timeout from a previous cycle
+    if (service._wakeUpTimeout) {
+      clearTimeout(service._wakeUpTimeout);
+      service._wakeUpTimeout = null;
+    }
+
     service.isHibernationRequested = true;
     service.lastHibernated = Date.now();
   }
@@ -1233,6 +1274,24 @@ export default class ServicesStore extends TypedStore {
     );
     service.isHibernationRequested = false;
     service.lastHibernated = null;
+
+    // FORK: Enable wake-up transition backdrop — screenshot stays visible
+    // behind the loading webview to prevent white flash.
+    if (service.hibernationScreenshotUrl) {
+      // Clear any existing timeout from a previous wake cycle
+      if (service._wakeUpTimeout) {
+        clearTimeout(service._wakeUpTimeout);
+      }
+      service.isWakingUp = true;
+      // Safety timeout: clear flag after 15s in case did-stop-loading never fires
+      service._wakeUpTimeout = setTimeout(
+        action('clearWakeUpTimeout', () => {
+          service.isWakingUp = false;
+          service._wakeUpTimeout = null;
+        }),
+        15_000,
+      );
+    }
   }
 
   @action _resetLastPollTimer({ serviceId = null }) {

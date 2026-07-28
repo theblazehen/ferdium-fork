@@ -157,27 +157,35 @@ class ServiceView extends Component<IProps, IState> {
           // eslint-disable-next-line react/jsx-no-useless-fragment
           <>
             {service.isHibernating ? (
-              <div
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  justifyContent: 'center',
-                  alignItems: 'center',
-                  textAlign: 'center',
-                }}
-              >
-                <span
-                  role="img"
-                  aria-label="Sleeping Emoji"
-                  style={{ fontSize: 42 }}
-                >
-                  😴
-                </span>
-                <br />
-                <br />
-                {intl.formatMessage(messages.hibernatingMessage)}
-                <br />
-                {intl.formatMessage(messages.hibernatingAction)}
+              // FORK: Hibernation screenshot replaces 😴 emoji
+              <div className="services__hibernation-overlay">
+                {service.hibernationScreenshotUrl ? (
+                  <>
+                    <img
+                      src={service.hibernationScreenshotUrl}
+                      alt={`${service.name} (hibernating)`}
+                      className="services__hibernation-screenshot"
+                    />
+                    <div className="services__hibernation-badge">
+                      {intl.formatMessage(messages.hibernatingMessage)}
+                    </div>
+                  </>
+                ) : (
+                  <div className="services__hibernation-fallback">
+                    <span
+                      role="img"
+                      aria-label="Sleeping Emoji"
+                      style={{ fontSize: 42 }}
+                    >
+                      😴
+                    </span>
+                    <br />
+                    <br />
+                    {intl.formatMessage(messages.hibernatingMessage)}
+                    <br />
+                    {intl.formatMessage(messages.hibernatingAction)}
+                  </div>
+                )}
               </div>
             ) : (
               <>

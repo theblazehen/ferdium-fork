@@ -405,17 +405,38 @@ class TabItem extends Component<IProps, IState> {
             Toggl uses three formats depending on duration:
               "51 sec - desc - proj • Toggl Track"
               "01:09 min - desc - proj • Toggl Track"
-              "01:15:28 - desc - proj • Toggl Track"  */}
+              "01:15:28 - desc - proj • Toggl Track"
+            We normalize all to H:MM:SS. */}
         {service.recipe?.id === 'toggl' &&
           service.livePageTitle &&
           (() => {
             const match = service.livePageTitle.match(
-              /^(\d+(?::\d{2}){0,2}\s*(?:sec|min)?)\s+-\s+(.+?)\s+[•·]\s+Toggl\s+Track$/,
+              /^(.+?)\s+-\s+(.+?)\s+[·•]\s+Toggl\s+Track$/,
             );
             if (!match) return null;
+            const raw = match[1].trim();
+            let totalSec = 0;
+            if (raw.endsWith('sec')) {
+              totalSec = Number.parseInt(raw, 10) || 0;
+            } else if (raw.endsWith('min')) {
+              const [m, s] = raw
+                .replace(/\s*min$/, '')
+                .split(':')
+                .map(Number);
+              totalSec = (m || 0) * 60 + (s || 0);
+            } else if (/^\d+:\d{2}:\d{2}$/.test(raw)) {
+              const [h, m, s] = raw.split(':').map(Number);
+              totalSec = (h || 0) * 3600 + (m || 0) * 60 + (s || 0);
+            } else {
+              return null;
+            }
+            const h = Math.floor(totalSec / 3600);
+            const m = Math.floor((totalSec % 3600) / 60);
+            const s = totalSec % 60;
+            const display = `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
             return (
               <span className="tab-item__status-text" title={match[2]}>
-                {match[1]}
+                {display}
               </span>
             );
           })()}

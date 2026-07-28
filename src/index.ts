@@ -4,6 +4,7 @@ import { EventEmitter } from 'node:events';
 import { join } from 'node:path';
 import {
   BrowserWindow,
+  type Session,
   app,
   desktopCapturer,
   dialog,
@@ -66,6 +67,9 @@ app.userAgentFallback = userAgent();
 // Keep a global reference of the window object, if you don't, the window will
 // be closed automatically when the JavaScript object is garbage collected.
 let mainWindow: BrowserWindow | undefined;
+// FORK: A sandbox session can back multiple service webviews; configure its
+// permission policy exactly once without adding private fields to Electron.
+const configuredPermissionSessions = new WeakSet<Session>();
 let willQuitApp = false;
 let overrideAppQuitForUpdate = false;
 
@@ -257,15 +261,68 @@ const createWindow = () => {
   app.on('web-contents-created', (_e, contents) => {
     if (contents.getType() === 'webview') {
       enableWebContents(contents);
-      // FORK: Allow ALL webview popups as child BrowserWindows that
-      // inherit the opener's session.  This keeps OAuth sign-in,
-      // target="_blank" links, and everything else in-app.
+
+      // FORK: Port upstream's per-session permission policy, including the
+      // permission checks Google uses to discover FIDO2 security keys.
+      const serviceSession = contents.session;
+      if (!configuredPermissionSessions.has(serviceSession)) {
+        configuredPermissionSessions.add(serviceSession);
+        const allowedPermissions = [
+          'media',
+          'notifications',
+          'fullscreen',
+          'pointerLock',
+          'display-capture',
+          'idle-detection',
+          'clipboard-read',
+          'clipboard-sanitized-write',
+          'speaker-selection',
+        ];
+        const allowedChecks = new Set([
+          ...allowedPermissions,
+          'hid',
+          'serial',
+          'usb',
+        ]);
+
+        serviceSession.setPermissionRequestHandler(
+          (webContents, permission, callback) => {
+            if (allowedPermissions.includes(permission)) {
+              callback(true);
+              return;
+            }
+            debug(
+              `Denied permission request: ${permission} from ${webContents?.getURL()}`,
+            );
+            callback(false);
+          },
+        );
+        serviceSession.setPermissionCheckHandler((_webContents, permission) =>
+          allowedChecks.has(permission),
+        );
+      }
+
+      // FORK: OAuth popups need an in-app child with the opener's session and
+      // window.opener intact; ordinary links still belong in the browser.
       contents.setWindowOpenHandler(({ url, disposition }) => {
-        debug('setWindowOpenHandler ALLOW', {
-          url: url?.slice(0, 80),
-          disposition,
-        });
-        return { action: 'allow' };
+        if (disposition === 'new-window') {
+          return {
+            action: 'allow',
+            outlivesOpener: false,
+            overrideBrowserWindowOptions: {
+              parent: mainWindow,
+              fullscreenable: false,
+              webPreferences: { session: contents.session },
+            },
+          };
+        }
+        openExternalUrl(url);
+        return { action: 'deny' };
+      });
+
+      contents.on('did-create-window', child => {
+        enableWebContents(child.webContents);
+        child.webContents.setWebRTCIPHandlingPolicy(webRTCIPHandlingPolicy);
       });
 
       // Handle will download event from main process (prevent download dialog)
@@ -493,12 +550,9 @@ if (argv['auth-negotiate-delegate-whitelist']) {
 }
 
 // Apply workaround for https://github.com/electron/electron/pull/26432
-// FORK: Also disable UserAgentClientHint to prevent sec-ch-ua headers
-// from leaking Chromium identity (we spoof Firefox UA globally).
-app.commandLine.appendSwitch(
-  'disable-features',
-  'CrossOriginOpenerPolicy,UserAgentClientHint',
-);
+// FORK: Preserve Chromium Client Hints; suppressing them while advertising
+// Firefox produced an inconsistent fingerprint rejected by Google.
+app.commandLine.appendSwitch('disable-features', 'CrossOriginOpenerPolicy');
 
 // FORK: Use basic password store to bypass cookie encryption issues
 app.commandLine.appendSwitch('password-store', 'basic');
