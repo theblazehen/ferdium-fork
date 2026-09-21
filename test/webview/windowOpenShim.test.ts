@@ -2,6 +2,13 @@ import { runInNewContext } from 'node:vm';
 
 import { windowOpenShim } from '../../src/webview/windowOpenShim';
 
+// FORK: The fork routes every service-created window through the page's own
+// native window.open so Chromium hands back a genuine WindowProxy, and the main
+// process keeps it in-app. Upstream instead sent bare `window.open(url)` calls
+// to the system browser and synthesised a placeholder object for argument-less
+// calls; both of those paths are deliberately gone, because a placeholder is
+// not a WindowProxy and services (Slack huddles, OAuth callbacks) write into
+// the real handle.
 const NATIVE_RESULT = { native: true };
 
 function installShim() {
@@ -20,18 +27,13 @@ function installShim() {
   return { external, nativeOpen, windowOpen: window.open };
 }
 
-const flushTimers = () =>
-  new Promise(resolve => {
-    setTimeout(resolve, 20);
-  });
-
 describe('windowOpenShim', () => {
   it('replaces window.open', () => {
     const { nativeOpen, windowOpen } = installShim();
     expect(windowOpen).not.toBe(nativeOpen);
   });
 
-  describe('when the page asks for a window', () => {
+  describe('delegates to the native window.open', () => {
     it('opens natively when window features are given and returns the real result', () => {
       const { external, nativeOpen, windowOpen } = installShim();
       const result = windowOpen(
@@ -79,50 +81,44 @@ describe('windowOpenShim', () => {
     });
   });
 
-  describe('when the page opens a plain url', () => {
-    it('opens it externally and returns null', () => {
+  describe('keeps bare-url windows in-app', () => {
+    it('opens a plain url natively instead of sending it to the browser', () => {
       const { external, nativeOpen, windowOpen } = installShim();
       const result = windowOpen('https://example.com/');
-      expect(external).toHaveBeenCalledWith('https://example.com/');
-      expect(nativeOpen).not.toHaveBeenCalled();
-      expect(result).toBeNull();
+      expect(nativeOpen).toHaveBeenCalledWith(
+        'https://example.com/',
+        undefined,
+        undefined,
+      );
+      expect(result).toBe(NATIVE_RESULT);
+      expect(external).not.toHaveBeenCalled();
     });
 
-    it('stringifies a URL object before it reaches ferdium.open', () => {
-      const { external, windowOpen } = installShim();
-      windowOpen(new URL('https://example.com/path?x=1'));
-      expect(external).toHaveBeenCalledWith('https://example.com/path?x=1');
+    it('passes a URL object through natively without stringifying it', () => {
+      const { external, nativeOpen, windowOpen } = installShim();
+      const url = new URL('https://example.com/path?x=1');
+      windowOpen(url);
+      expect(nativeOpen.mock.calls[0][0]).toBe(url);
+      expect(external).not.toHaveBeenCalled();
     });
 
     it('treats an empty features string like no features', () => {
       const { external, nativeOpen, windowOpen } = installShim();
       windowOpen('https://example.com/', '', '');
-      expect(external).toHaveBeenCalledWith('https://example.com/');
-      expect(nativeOpen).not.toHaveBeenCalled();
+      expect(nativeOpen).toHaveBeenCalledWith('https://example.com/', '', '');
+      expect(external).not.toHaveBeenCalled();
     });
   });
 
-  describe('when the page opens a window without a url or features', () => {
-    it('returns a placeholder and opens the url externally once assigned', async () => {
+  describe('when the page opens a window without arguments', () => {
+    it('returns the native handle rather than a placeholder', () => {
       const { external, nativeOpen, windowOpen } = installShim();
-      const placeholder = windowOpen() as { location: { href: string } };
-      // The placeholder is created inside the vm context, so compare by value.
-      expect(placeholder).toEqual({ location: { href: '' } });
-      expect(external).not.toHaveBeenCalled();
+      const result = windowOpen();
 
-      placeholder.location.href = 'https://example.com/from-placeholder';
-      await flushTimers();
-
-      expect(external).toHaveBeenCalledWith(
-        'https://example.com/from-placeholder',
-      );
-      expect(nativeOpen).not.toHaveBeenCalled();
-    });
-
-    it('does nothing when the url is never assigned', async () => {
-      const { external, windowOpen } = installShim();
-      windowOpen(null);
-      await flushTimers();
+      // A real WindowProxy is the whole point: a plain object cannot back
+      // `popup.document` or `popup.closed` for the opener.
+      expect(result).toBe(NATIVE_RESULT);
+      expect(nativeOpen).toHaveBeenCalledWith(undefined, undefined, undefined);
       expect(external).not.toHaveBeenCalled();
     });
   });

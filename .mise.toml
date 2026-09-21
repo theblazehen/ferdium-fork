@@ -24,3 +24,7 @@ run = "pnpm run typecheck"
 [tasks.lint]
 description = "Run ESLint"
 run = "pnpm run lint"
+
+[tasks.test]
+description = "Run jest tests"
+run = "pnpm run test"

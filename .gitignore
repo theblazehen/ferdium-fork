@@ -389,3 +389,6 @@ server*.log
 
 # env
 .envrc
+
+# Crabbox tool captures (local session artifacts)
+.crabbox/

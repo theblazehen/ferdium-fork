@@ -29,6 +29,27 @@ const linux = () => {
   return `X11; Linux ${archString}`;
 };
 
+// FORK: Google compatibility identity. Google treats its auth endpoint and its
+// own properties as one identity, so this covers both the OAuth host and the
+// Google-owned service hosts (e.g. music.youtube.com).
+const GOOGLE_HOSTS = ['google.com', 'youtube.com'];
+
+export const isGoogleUrl = (value: string): boolean => {
+  try {
+    const { hostname } = new URL(value);
+    const host = hostname.toLowerCase();
+    return GOOGLE_HOSTS.some(
+      domain => host === domain || host.endsWith(`.${domain}`),
+    );
+  } catch {
+    return false;
+  }
+};
+
+// FORK: Existing Google compatibility workaround, not a supported-browser UA.
+export const userAgentWithoutChromeVersion = (value: string): string =>
+  value.replace(/Chrome\/[\d.]+/, 'Chrome');
+
 // FORK: Keep Electron's Chromium fingerprint internally consistent. Google
 // rejects a Firefox UA backed by Chromium, while this standards-correct UA
 // matches the actual engine and fixes the malformed upstream Safari token.

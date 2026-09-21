@@ -34,7 +34,7 @@ Ferdium had multiple interception layers for popups. The fork collapses them to 
 
 - Default: each service gets `persist:service-{uuid}` when `sandboxServices: true`.
 - Sandbox override: services listed in `~/.config/Ferdium/config/sandboxes.json` share `persist:sandbox-{sandboxId}`.
-- Google services (YouTube, Gmail, Toggl) share a `google` sandbox so auth cookies propagate — sign in via YouTube (which bypasses Google's embedded-browser detection), Gmail picks up the session.
+- Google services (YouTube, Gmail, Toggl) share a `google` sandbox so auth cookies propagate. Any of them can start sign-in — the Google compatibility identity is applied per request to Google hosts, so it does not depend on which service opens the flow. Gmail picks up the session from the shared partition.
 - When `sandboxServices: false`, ALL services share `persist:general-session` (not recommended — breaks multi-account).
 
 ### Specificity Battles
@@ -100,15 +100,30 @@ Files:
 - `src/webview/recipe.ts` — removed `sendToHost('new-window')` short-circuit; all `window.open` calls go through `originalWindowOpen()`
 - `src/models/Service.ts` — removed dead `new-window` event listener (Electron 37); cleaned unused `isValidExternalURL` import
 
-### 9. Global Firefox UA cloaking
+### 9. Google auth compatibility identity
 
-Firefox 148 UA string globally, bypassing Google's embedded-browser detection (sec-ch-ua Client Hints). Google applies tiered risk: Gmail (`service=mail`) is stricter than YouTube. Auth via YouTube in a shared sandbox partition, Gmail picks up the session.
+Google rejects the versioned embedded-Chromium UA. The fork keeps Electron's real Chromium fingerprint (so `navigator.userAgent` and the engine agree) and swaps only the `Chrome/<version>` token for the versionless `Chrome` token — and only for requests bound for Google.
+
+The rewrite is applied **per request** through a session-level `webRequest.onBeforeSendHeaders` handler, never by changing the UA mid-navigation: changing it during a navigation restarts in-flight form POSTs, which breaks form-target OAuth and SAML sign-ins.
+
+- `src/helpers/userAgent-helpers.ts` — `isGoogleUrl` covers `google.com` and `youtube.com` (and subdomains); `userAgentWithoutChromeVersion` strips the version token
+- `src/index.ts` — one composed `onBeforeSendHeaders` handler per session. Electron permits only ONE per session, and recipes register theirs via `modifyRequestHeaders` (WhatsApp uses `*://*/*`), so recipe rules and the Google rule are composed rather than competing for the slot. Popups share the opener's session, so the request rule covers them; the popup's own identity is set before its first request and re-asserted on `did-navigate`. Note a click-opened popup has already committed its first document, so its DOM identity applies from the next navigation.
+- `src/helpers/session-header-rules.ts` — the composed rule registry and match-pattern check, kept free of Electron imports so it is directly testable
+- `src/models/UserAgent.ts` — resolves the service's URL lazily so a Google-hosted service keeps one identity for its whole lifetime
+
+Because the rule is keyed on the request URL, Google OAuth works from **any** service, not only Google-hosted ones.
+
+Client hints: no `sec-ch-ua*` request header reaches the server in this Electron build — measured against a live header-echo endpoint over real TLS, for Electron's default identity, the versionless identity, and (as a positive control) a Firefox identity alike. `UserAgentClientHint` is absent from the shipped binary's feature strings, consistent with Electron disabling the HTTP hint headers. No hint-stripping code is therefore needed; `src/index.ts` carries only `CrossOriginOpenerPolicy` in its `disable-features` switch.
+
+Caveat, measured and not fixed: the JS-level `navigator.userAgentData` is engine-derived and still reports `Chromium;v="152"` even while the UA string is versionless (verified on the live Google sign-in page). A UA string cannot change it. Google's live sign-in page renders normally under both the default and the versionless identity, so nothing currently depends on it, but the versionless UA string is not a complete fingerprint mask.
+
+Scope of the identity rule: it keys on the **request URL**, so the versionless identity applies to any Google-bound request — Google OAuth opened from an arbitrary non-Google service included, which is the case that matters. The per-service DOM identity in `src/models/UserAgent.ts` is resolved from the service's own URL; a non-Google service that navigates its webview to a Google page will therefore send versionless request headers while its document-level `navigator.userAgent` stays versioned. Reconciling that would require mutating the UA during navigation, which is exactly what cancels in-flight form POSTs, so it is deliberately not done.
 
 Files:
 
-- `src/helpers/userAgent-helpers.ts` — rewritten: returns Firefox 148 UA instead of Chrome
-- `src/models/UserAgent.ts` — removed broken "chromeless" hack (Chrome without version); removed `userAgentWithoutChromeVersion`; simplified `_handleNavigate`
-- `src/index.ts` — added `UserAgentClientHint` to `disable-features` switch to suppress sec-ch-ua headers
+- `src/helpers/userAgent-helpers.ts` — `isGoogleUrl`, `userAgentWithoutChromeVersion`, Chromium-consistent default UA
+- `src/index.ts` — composed session header handler, popup identity adoption
+- `src/models/UserAgent.ts` — lazy service-URL resolution, stable identity per service
 
 ### 10. Live favicon in sidebar
 

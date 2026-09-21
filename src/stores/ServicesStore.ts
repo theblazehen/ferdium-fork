@@ -770,7 +770,6 @@ export default class ServicesStore extends TypedStore {
   }
 
   @action _detachService({ service }) {
-    service.userAgentModel.setWebviewReference(null);
     // eslint-disable-next-line no-param-reassign
     service.webview = null;
     // eslint-disable-next-line no-param-reassign

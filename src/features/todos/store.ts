@@ -181,7 +181,6 @@ export default class TodoStore extends FeatureStore {
     debug('_setTodosWebview', webview);
     if (this.webview !== webview) {
       this.webview = webview;
-      this.userAgentModel.setWebviewReference(webview);
     }
   };
 

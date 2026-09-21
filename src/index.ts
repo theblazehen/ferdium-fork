@@ -56,7 +56,16 @@ import { asarPath } from './helpers/asar-helpers';
 import { checkIfCertIsPresent } from './helpers/certs-helpers';
 import { translateTo } from './helpers/translation-helpers';
 import { openExternalUrl } from './helpers/url-helpers';
-import userAgent from './helpers/userAgent-helpers';
+import userAgent, {
+  isGoogleUrl,
+  userAgentWithoutChromeVersion,
+} from './helpers/userAgent-helpers';
+import {
+  composeSessionHeaders,
+  ensureSessionHeaderRules,
+  getSessionHeaderRules,
+  registerSessionHeaderRule,
+} from './helpers/session-header-rules';
 import generatedTranslations from './i18n/translations';
 import { darkThemeGrayDarkest } from './themes/legacy';
 
@@ -69,6 +78,7 @@ app.userAgentFallback = userAgent();
 // Keep a global reference of the window object, if you don't, the window will
 // be closed automatically when the JavaScript object is garbage collected.
 let mainWindow: BrowserWindow | undefined;
+
 // FORK: A sandbox session can back multiple service webviews; configure its
 // permission policy exactly once without adding private fields to Electron.
 const configuredPermissionSessions = new WeakSet<Session>();
@@ -309,6 +319,26 @@ const createWindow = () => {
       if (!configuredPermissionSessions.has(ses)) {
         configuredPermissionSessions.add(ses);
 
+        // FORK: Centralise header interception for this session. Electron keeps
+        // one onBeforeSendHeaders handler per session, so recipe-supplied
+        // modifyRequestHeaders rules and the Google identity rule must compose
+        // here instead of racing for the slot. Do not reset an existing list:
+        // a recipe may have registered its rules before this webview attached.
+        ensureSessionHeaderRules(ses);
+
+        ses.webRequest.onBeforeSendHeaders(
+          { urls: ['*://*/*'] },
+          (details, callback) => {
+            callback({
+              requestHeaders: composeSessionHeaders(
+                details,
+                details.requestHeaders,
+                getSessionHeaderRules(ses),
+              ),
+            });
+          },
+        );
+
         ses.setPermissionRequestHandler((webContents, permission, callback) => {
           const allowedPermissions = [
             'media',
@@ -355,12 +385,13 @@ const createWindow = () => {
 
       // FORK: Keep every service-created window inside Ferdium while using
       // upstream's sanitized, movable popup options and Linux WebAuthn preload.
-      // The opener's session is retained so authentication cookies flow back.
-      contents.setWindowOpenHandler(({ features }) => ({
+      // createWindow lets us set a stable UA before the first request and
+      // preserve POST bodies/referrers for form-target OAuth and SAML popups.
+      contents.setWindowOpenHandler(details => ({
         action: 'allow',
         outlivesOpener: false,
         overrideBrowserWindowOptions: {
-          ...popupWindowOptions(features, isPositionValid),
+          ...popupWindowOptions(details.features, isPositionValid),
           webPreferences: isLinux
             ? {
                 session: contents.session,
@@ -374,12 +405,60 @@ const createWindow = () => {
               }
             : { session: contents.session },
         },
-      }));
+        createWindow: options => {
+          const child = new BrowserWindow({
+            ...options,
+            webPreferences: {
+              ...options.webPreferences,
+              session: contents.session,
+            },
+          });
+          // FORK: A popup inherits the opener's identity. When it is already
+          // bound for Google, adopt the stable identity before the first
+          // request, and re-assert it once a Google navigation commits (which
+          // covers redirect chains and about:blank openers).
+          //
+          // A click-opened popup has already committed its first document by
+          // the time createWindow runs, so that document's DOM identity comes
+          // from app.userAgentFallback and stays versioned; the identity set
+          // here applies from the next navigation. The request headers, which
+          // are what the fork's Google rule governs, are already versionless.
+          // Setting the UA during a navigation is what cancels in-flight
+          // POST/SAML navigations in Electron, so it is never done mid-flight.
+          const openerUserAgent = contents.getUserAgent();
+          child.webContents.setUserAgent(
+            isGoogleUrl(details.url)
+              ? userAgentWithoutChromeVersion(openerUserAgent)
+              : openerUserAgent,
+          );
+          child.webContents.on('did-navigate', (_event, url) => {
+            if (!isGoogleUrl(url)) return;
+            child.webContents.setUserAgent(
+              userAgentWithoutChromeVersion(child.webContents.getUserAgent()),
+            );
+          });
+          enableWebContents(child.webContents);
+          child.webContents.setWebRTCIPHandlingPolicy(webRTCIPHandlingPolicy);
 
-      contents.on('did-create-window', child => {
-        enableWebContents(child.webContents);
-        child.webContents.setWebRTCIPHandlingPolicy(webRTCIPHandlingPolicy);
-      });
+          const loadOptions = {
+            httpReferrer: details.referrer,
+            ...(details.postBody
+              ? {
+                  extraHeaders: `Content-Type: ${details.postBody.contentType}${
+                    details.postBody.boundary
+                      ? `; boundary=${details.postBody.boundary}`
+                      : ''
+                  }`,
+                  postData: details.postBody.data,
+                }
+              : {}),
+          };
+          // Electron's `postBody.data` uses the same UploadRawData and
+          // UploadFile entries accepted by WebContents.loadURL's `postData`.
+          child.loadURL(details.url, loadOptions);
+          return child.webContents;
+        },
+      }));
 
       // Handle will download event from main process (prevent download dialog)
       contents.session.on('will-download', (_e, item) => {
@@ -610,8 +689,8 @@ if (argv['auth-negotiate-delegate-whitelist']) {
 }
 
 // Apply workaround for https://github.com/electron/electron/pull/26432
-// FORK: Preserve Chromium Client Hints; suppressing them while advertising
-// Firefox produced an inconsistent fingerprint rejected by Google.
+// FORK: Chromium removed UserAgentClientHint; this switch cannot suppress
+// the engine's client hints.
 app.commandLine.appendSwitch('disable-features', 'CrossOriginOpenerPolicy');
 
 // FORK: Use basic password store to bypass cookie encryption issues
@@ -780,20 +859,24 @@ ipcMain.on(
     debug(
       `Received modifyRequestHeaders ${modifiedRequestHeaders} for serviceId ${serviceId}`,
     );
+    const serviceSession = session.fromPartition(
+      `persist:service-${serviceId}`,
+    );
     for (const headerFilterSet of modifiedRequestHeaders) {
       const { headers, requestFilters } = headerFilterSet;
-      session
-        .fromPartition(`persist:service-${serviceId}`)
-        .webRequest.onBeforeSendHeaders(requestFilters, (details, callback) => {
-          for (const key in headers) {
-            if (Object.prototype.hasOwnProperty.call(headers, key)) {
-              const value = headers[key];
-              // eslint-disable-next-line no-param-reassign
-              details.requestHeaders[key] = value;
-            }
+      // FORK: Recipe rules join the session's composed handler rather than
+      // claiming the single onBeforeSendHeaders slot, so a recipe (WhatsApp
+      // filters '*://*/*') cannot silently disable the Google identity rule.
+      registerSessionHeaderRule(serviceSession, {
+        filters: requestFilters ?? {},
+        apply: currentHeaders => {
+          const next = { ...currentHeaders };
+          for (const key of Object.keys(headers)) {
+            next[key] = headers[key];
           }
-          callback({ requestHeaders: details.requestHeaders });
-        });
+          return next;
+        },
+      });
     }
   },
 );

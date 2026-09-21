@@ -1,36 +1,28 @@
-import { action, computed, makeObservable, observable, observe } from 'mobx';
+import { computed, makeObservable, observable } from 'mobx';
 
-import type ElectronWebView from 'react-electron-web-view';
-import defaultUserAgent from '../helpers/userAgent-helpers';
-
-const debug = require('../preload-safe-debug')('Ferdium:UserAgent');
+import defaultUserAgent, {
+  isGoogleUrl,
+  userAgentWithoutChromeVersion,
+} from '../helpers/userAgent-helpers';
 
 export default class UserAgent {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  _didNavigateListener = (_event: any): void => {};
-
-  @observable.ref webview: ElectronWebView | null = null;
-
   @observable userAgentPref: string | null = null;
 
   @observable overrideUserAgent = (): string => '';
 
-  constructor(overrideUserAgent: any = null) {
+  // FORK: Resolve the service URL lazily so custom URLs remain observable.
+  serviceUrl: (() => string) | null;
+
+  constructor(
+    overrideUserAgent: (() => string) | null = null,
+    serviceUrl: (() => string) | null = null,
+  ) {
     makeObservable(this);
 
     if (typeof overrideUserAgent === 'function') {
       this.overrideUserAgent = overrideUserAgent;
     }
-
-    observe(this, 'webview', change => {
-      const { oldValue, newValue } = change;
-      if (oldValue !== null) {
-        this._removeWebviewEvents(oldValue);
-      }
-      if (newValue !== null) {
-        this._addWebviewEvents(newValue);
-      }
-    });
+    this.serviceUrl = serviceUrl;
   }
 
   @computed get defaultUserAgent(): string {
@@ -59,58 +51,16 @@ export default class UserAgent {
     return null;
   }
 
-  @computed get userAgentWithoutChromeVersion(): string {
-    return this.defaultUserAgent.replace(/Chrome\/[\d.]+/, 'Chrome');
-  }
-
   @computed get userAgent(): string {
-    return this.serviceUserAgentPref || this.defaultUserAgent;
-  }
-
-  @action setWebviewReference(webview: ElectronWebView | null): void {
-    if (this.webview === webview) {
-      return;
+    if (this.serviceUserAgentPref) {
+      return this.serviceUserAgentPref;
     }
 
-    this.webview = webview;
-  }
-
-  @action _handleNavigate(url: string): void {
-    // FORK: Google rejects the normal embedded Chromium UA after identifying
-    // an existing account. Upstream's versionless Chrome token selects its
-    // supported WebLite flow. Apply it only after navigation: changing the UA
-    // during will-navigate cancels pending POST/SAML navigations in Electron.
-    if (url.startsWith('https://accounts.google.com')) {
-      debug('Setting user agent to chromeless for url', url);
-      // Set chromeless user agent (without Chrome version) for Google accounts.
-      // Note: This is intentionally only called from did-navigate (after navigation
-      // completes), never from will-navigate or did-redirect-navigation. Setting
-      // webview.userAgent during a pending navigation or redirect chain causes
-      // Electron to cancel the navigation via SetUserAgentOverride(), which breaks
-      // cross-origin form POST requests (e.g. SAML ACS endpoints) and redirect chains.
-      if (this.webview) {
-        this.webview.userAgent =
-          this.serviceUserAgentPref || this.userAgentWithoutChromeVersion;
-      }
-    } else {
-      debug('Setting user agent to default for url', url);
-      if (this.webview) {
-        this.webview.userAgent =
-          this.serviceUserAgentPref || this.defaultUserAgent;
-      }
-    }
-  }
-
-  _addWebviewEvents(webview: ElectronWebView): void {
-    debug('Adding event handlers');
-
-    this._didNavigateListener = event => this._handleNavigate(event.url);
-    webview.addEventListener('did-navigate', this._didNavigateListener);
-  }
-
-  _removeWebviewEvents(webview: ElectronWebView): void {
-    debug('Removing event handlers');
-
-    webview.removeEventListener('did-navigate', this._didNavigateListener);
+    const baseUserAgent = this.defaultUserAgent;
+    // FORK: Never change UA during navigation. Google rejects identity changes
+    // inside one auth flow, and Electron can restart an in-flight form POST.
+    return this.serviceUrl && isGoogleUrl(this.serviceUrl())
+      ? userAgentWithoutChromeVersion(baseUserAgent)
+      : baseUserAgent;
   }
 }

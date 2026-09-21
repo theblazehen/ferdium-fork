@@ -36,21 +36,19 @@ const ServicesStore = jest.requireActual<
 >('../../src/stores/ServicesStore').default;
 
 describe('ServicesStore', () => {
-  it('clears UserAgent webview reference when detaching a service', () => {
+  it('clears the webview reference when detaching a service', () => {
     const store = Object.create(ServicesStore.prototype) as ServicesStoreClass;
-    const userAgentModel = {
-      setWebviewReference: jest.fn(),
-    };
     const service = {
       isAttached: true,
-      userAgentModel,
+      pageTitle: 'Toggl',
+      userAgentModel: {},
       webview: { id: 'webview' },
     };
 
     store._detachService({ service });
 
-    expect(userAgentModel.setWebviewReference).toHaveBeenCalledWith(null);
     expect(service.webview).toBeNull();
     expect(service.isAttached).toBe(false);
+    expect(service.pageTitle).toBe('');
   });
 });

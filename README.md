@@ -23,13 +23,17 @@ Personal fork of [Ferdium](https://github.com/ferdium/ferdium-app) with Biscuit-
 - **CDP debugging** — `FERDIUM_CDP=1` env var enables Chrome DevTools Protocol on port 9222
 - **Dev crash guards** — ENOENT guards for missing `sandboxes.json`, `build/recipes/all.json`, and `Partitions/` directory
 - **Biscuit migration** — `scripts/migrate-biscuit.py` imports tabs, groups, cookies, localStorage, and IndexedDB from Biscuit
-- **In-app popup windows** — all webview popups (OAuth, target="_blank", window.open) open as child BrowserWindows instead of system browser
-- **Global Firefox UA cloaking** — Firefox 148 UA string globally, suppresses sec-ch-ua Client Hints, bypasses Google's embedded-browser detection
+- **In-app popup windows** — all webview popups (OAuth, target="\_blank", window.open) open as child BrowserWindows instead of system browser
+- **Stable Google service identity** — Google services use one Chromium-compatible UA for their complete lifetime, including popups and redirects, without mutating in-flight navigation
 - **Google sandbox session sharing** — Google services (YouTube, Gmail, Toggl) share a sandbox partition so auth cookies propagate; sign in via YouTube, Gmail picks up the session
 - **Build optimization** — Linux targets reduced to `dir` x64 only for fast personal builds
+
 [![Open Collective backers](https://img.shields.io/static/v1?label=Contribute%20on%20Open%20Collective&message=Donate%20to%20Ferdium&color=9cf&logo=open-collective)](https://opencollective.com/ferdium#category-CONTRIBUTE)
+
 <!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
+
 <a href='#contributors-'><img src='https://img.shields.io/badge/contributors-336-default.svg?logo=github&color=6c64e4' alt='Contributors'/></a>
+
 <!-- ALL-CONTRIBUTORS-BADGE:END -->
 
 ## Setup
@@ -37,7 +41,7 @@ Personal fork of [Ferdium](https://github.com/ferdium/ferdium-app) with Biscuit-
 ```bash
 git clone --recurse-submodules https://github.com/theblazehen/ferdium-fork
 cd ferdium-fork
-mise install                          # node 22.18.0 + pnpm 10.14.0
+mise install                          # node 24.20.0 + pnpm 12.3.4
 pnpm install
 pnpm --dir recipes install && pnpm --dir recipes package
 node esbuild.mjs                      # initial build

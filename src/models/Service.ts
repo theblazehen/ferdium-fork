@@ -219,7 +219,11 @@ export default class Service {
 
     this.recipe = recipe;
 
-    this.userAgentModel = new UserAgent(recipe.overrideUserAgent);
+    // FORK: Keep one Google compatibility UA for the service's full lifetime.
+    this.userAgentModel = new UserAgent(
+      recipe.overrideUserAgent,
+      () => this.url,
+    );
 
     this.id = ifUndefined<string>(data.id, this.id);
     this.name = ifUndefined<string>(data.name, this.name);
@@ -627,7 +631,6 @@ export default class Service {
       );
       return;
     }
-    this.userAgentModel.setWebviewReference(webview);
     downloadController.registerWebContents({
       serviceId: this.id,
       webContents: webviewWebContents,

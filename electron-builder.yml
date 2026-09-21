@@ -88,11 +88,11 @@ mac:
     - target: zip
       arch: [x64, arm64]
   extendInfo:
-    LSMinimumSystemVersion: "13.0.0"
-    NSCameraUsageDescription: "This app requires camera access for video chats"
-    NSMicrophoneUsageDescription: "This app requires microphone access for voice chats"
-    NSAudioCaptureUsageDescription: "This app requires system audio capture access for screen sharing"
-    NSFocusStatusUsageDescription: "This app requires focus access for DND functionality"
+    LSMinimumSystemVersion: '13.0.0'
+    NSCameraUsageDescription: 'This app requires camera access for video chats'
+    NSMicrophoneUsageDescription: 'This app requires microphone access for voice chats'
+    NSAudioCaptureUsageDescription: 'This app requires system audio capture access for screen sharing'
+    NSFocusStatusUsageDescription: 'This app requires focus access for DND functionality'
 
 win:
   artifactName: '${productName}-${os}-Installer-${version}-${arch}.${ext}'
@@ -107,7 +107,7 @@ win:
       arch: [arm64]
   # The name of the CN appearing in the certificate must be present in the publisherName list below
   signtoolOptions:
-    publisherName: ["Ferdium Contributors", "Ambroise Grau"]
+    publisherName: ['Ferdium Contributors', 'Ambroise Grau']
   # Remove the verification for a signature to allow auto-update without signed certificate
   verifyUpdateCodeSignature: false
 
