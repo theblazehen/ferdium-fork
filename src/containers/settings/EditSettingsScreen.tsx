@@ -15,11 +15,13 @@ import {
   GOOGLE_TRANSLATOR_LANGUAGES,
   LIBRETRANSLATE_TRANSLATOR_LANGUAGES,
   SEARCH_ENGINE_NAMES,
+  SERVICE_WEBVIEW_BORDER_RADII,
   SPLIT_COLUMNS_MAX,
   SPLIT_COLUMNS_MIN,
   TODO_APPS,
   TRANSLATOR_ENGINE_GOOGLE,
   TRANSLATOR_ENGINE_NAMES,
+  WEBVIEW_PADDING_SIZES,
   getI18nConfigObjects,
 } from '../../config';
 import { isMac } from '../../environment';
@@ -63,7 +65,7 @@ const messages = defineMessages({
   },
   enableSystemTray: {
     id: 'settings.app.form.enableSystemTray',
-    defaultMessage: 'Always show Ferdium in System Tray',
+    defaultMessage: 'Show Ferdium in System Tray',
   },
   enableMenuBar: {
     id: 'settings.app.form.enableMenuBar',
@@ -216,6 +218,14 @@ const messages = defineMessages({
     id: 'settings.app.form.serviceRibbonWidth',
     defaultMessage: 'Sidebar width',
   },
+  webviewPaddingSize: {
+    id: 'settings.app.form.webviewPaddingSize',
+    defaultMessage: 'Workspace, sidebar and webview padding',
+  },
+  serviceWebviewBorderRadius: {
+    id: 'settings.app.form.serviceWebviewBorderRadius',
+    defaultMessage: 'Service webview border radius',
+  },
   sidebarServicesLocation: {
     id: 'settings.app.form.sidebarServicesLocation',
     defaultMessage: 'Sidebar Services Icons Location',
@@ -271,6 +281,10 @@ const messages = defineMessages({
   alwaysShowWorkspaces: {
     id: 'settings.app.form.alwaysShowWorkspaces',
     defaultMessage: 'Always show workspace drawer',
+  },
+  useCompactWorkspaceDrawer: {
+    id: 'settings.app.form.useCompactWorkspaceDrawer',
+    defaultMessage: 'Use compact workspace drawer',
   },
   hideAllServicesWorkspace: {
     id: 'settings.app.form.hideAllServicesWorkspace',
@@ -405,24 +419,30 @@ class EditSettingsScreen extends Component<
       lockedPassword: useOriginalPassword ? '' : settingsData.lockedPassword,
     });
 
+    const enableSystemTray = Boolean(settingsData.enableSystemTray);
+    const trayDependencySatisfied = isMac || enableSystemTray;
     app.launchOnStartup({
       enable: Boolean(settingsData.autoLaunchOnStart),
-      openInBackground: Boolean(settingsData.autoLaunchInBackground),
+      openInBackground:
+        trayDependencySatisfied && Boolean(settingsData.autoLaunchInBackground),
     });
 
     debug(`Updating settings store with data: ${settingsData}`);
 
     const { app: currentSettings } = this.props.stores.settings.all;
-
     const newSettings = {
-      runInBackground: Boolean(settingsData.runInBackground),
-      enableSystemTray: Boolean(settingsData.enableSystemTray),
+      runInBackground:
+        trayDependencySatisfied && Boolean(settingsData.runInBackground),
+      enableSystemTray,
       reloadAfterResume: Boolean(settingsData.reloadAfterResume),
       reloadAfterResumeTime: Number(settingsData.reloadAfterResumeTime),
-      startMinimized: Boolean(settingsData.startMinimized),
+      startMinimized:
+        trayDependencySatisfied && Boolean(settingsData.startMinimized),
       confirmOnQuit: Boolean(settingsData.confirmOnQuit),
-      minimizeToSystemTray: Boolean(settingsData.minimizeToSystemTray),
-      closeToSystemTray: Boolean(settingsData.closeToSystemTray),
+      minimizeToSystemTray:
+        trayDependencySatisfied && Boolean(settingsData.minimizeToSystemTray),
+      closeToSystemTray:
+        trayDependencySatisfied && Boolean(settingsData.closeToSystemTray),
       privateNotifications: Boolean(settingsData.privateNotifications),
       clipboardNotifications: Boolean(settingsData.clipboardNotifications),
       notifyTaskBarOnMessage: Boolean(settingsData.notifyTaskBarOnMessage),
@@ -463,6 +483,10 @@ class EditSettingsScreen extends Component<
       splitMode: Boolean(settingsData.splitMode),
       splitColumns: Number(settingsData.splitColumns),
       serviceRibbonWidth: Number(settingsData.serviceRibbonWidth),
+      webviewPaddingSize: Number(settingsData.webviewPaddingSize),
+      serviceWebviewBorderRadius: Number(
+        settingsData.serviceWebviewBorderRadius,
+      ),
       sidebarServicesLocation: Number(settingsData.sidebarServicesLocation),
       iconSize: Number(settingsData.iconSize),
       enableLongPressServiceHint: Boolean(
@@ -479,6 +503,9 @@ class EditSettingsScreen extends Component<
       hideSettingsButton: Boolean(settingsData.hideSettingsButton),
       hideDownloadButton: Boolean(settingsData.hideDownloadButton),
       alwaysShowWorkspaces: Boolean(settingsData.alwaysShowWorkspaces),
+      useCompactWorkspaceDrawer: Boolean(
+        settingsData.useCompactWorkspaceDrawer,
+      ),
       hideAllServicesWorkspace: Boolean(settingsData.hideAllServicesWorkspace),
       accentColor: settingsData.accentColor,
       progressbarAccentColor: settingsData.progressbarAccentColor,
@@ -649,6 +676,15 @@ class EditSettingsScreen extends Component<
       sort: false,
     });
 
+    const webviewPaddingSizes = getSelectOptions({
+      locales: WEBVIEW_PADDING_SIZES,
+      sort: false,
+    });
+    const serviceWebviewBorderRadii = getSelectOptions({
+      locales: SERVICE_WEBVIEW_BORDER_RADII,
+      sort: false,
+    });
+
     // Use the internationalized sidebar service location configuration
     const sidebarServicesLocation = getSelectOptions({
       locales: i18nConfig.SIDEBAR_SERVICES_LOCATION,
@@ -667,7 +703,11 @@ class EditSettingsScreen extends Component<
         globalMessages.spellcheckerAutomaticDetection,
       ),
     });
-
+    const isSystemTrayEnabled = ifUndefined<boolean>(
+      settings.all.app.enableSystemTray,
+      DEFAULT_APP_SETTINGS.enableSystemTray,
+    );
+    const trayDependencySatisfied = isMac || isSystemTrayEnabled;
     const config: FormFields = {
       fields: {
         autoLaunchOnStart: {
@@ -690,20 +730,26 @@ class EditSettingsScreen extends Component<
         },
         runInBackground: {
           label: intl.formatMessage(messages.runInBackground),
-          value: ifUndefined<boolean>(
-            settings.all.app.runInBackground,
-            DEFAULT_APP_SETTINGS.runInBackground,
-          ),
+          value:
+            trayDependencySatisfied &&
+            ifUndefined<boolean>(
+              settings.all.app.runInBackground,
+              DEFAULT_APP_SETTINGS.runInBackground,
+            ),
           default: DEFAULT_APP_SETTINGS.runInBackground,
+          disabled: !trayDependencySatisfied,
           type: 'checkbox',
         },
         startMinimized: {
           label: intl.formatMessage(messages.startMinimized),
-          value: ifUndefined<boolean>(
-            settings.all.app.startMinimized,
-            DEFAULT_APP_SETTINGS.startMinimized,
-          ),
+          value:
+            trayDependencySatisfied &&
+            ifUndefined<boolean>(
+              settings.all.app.startMinimized,
+              DEFAULT_APP_SETTINGS.startMinimized,
+            ),
           default: DEFAULT_APP_SETTINGS.startMinimized,
+          disabled: !trayDependencySatisfied,
           type: 'checkbox',
         },
         confirmOnQuit: {
@@ -745,20 +791,26 @@ class EditSettingsScreen extends Component<
         },
         minimizeToSystemTray: {
           label: intl.formatMessage(messages.minimizeToSystemTray),
-          value: ifUndefined<boolean>(
-            settings.all.app.minimizeToSystemTray,
-            DEFAULT_APP_SETTINGS.minimizeToSystemTray,
-          ),
+          value:
+            trayDependencySatisfied &&
+            ifUndefined<boolean>(
+              settings.all.app.minimizeToSystemTray,
+              DEFAULT_APP_SETTINGS.minimizeToSystemTray,
+            ),
           default: DEFAULT_APP_SETTINGS.minimizeToSystemTray,
+          disabled: !trayDependencySatisfied,
           type: 'checkbox',
         },
         closeToSystemTray: {
           label: intl.formatMessage(messages.closeToSystemTray),
-          value: ifUndefined<boolean>(
-            settings.all.app.closeToSystemTray,
-            DEFAULT_APP_SETTINGS.closeToSystemTray,
-          ),
+          value:
+            trayDependencySatisfied &&
+            ifUndefined<boolean>(
+              settings.all.app.closeToSystemTray,
+              DEFAULT_APP_SETTINGS.closeToSystemTray,
+            ),
           default: DEFAULT_APP_SETTINGS.closeToSystemTray,
+          disabled: !trayDependencySatisfied,
           type: 'checkbox',
         },
         privateNotifications: {
@@ -1128,6 +1180,24 @@ class EditSettingsScreen extends Component<
           default: DEFAULT_APP_SETTINGS.serviceRibbonWidth,
           options: sidebarWidth,
         },
+        webviewPaddingSize: {
+          label: intl.formatMessage(messages.webviewPaddingSize),
+          value: ifUndefined<number>(
+            settings.all.app.webviewPaddingSize,
+            DEFAULT_APP_SETTINGS.webviewPaddingSize,
+          ),
+          default: DEFAULT_APP_SETTINGS.webviewPaddingSize,
+          options: webviewPaddingSizes,
+        },
+        serviceWebviewBorderRadius: {
+          label: intl.formatMessage(messages.serviceWebviewBorderRadius),
+          value: ifUndefined<number>(
+            settings.all.app.serviceWebviewBorderRadius,
+            DEFAULT_APP_SETTINGS.serviceWebviewBorderRadius,
+          ),
+          default: DEFAULT_APP_SETTINGS.serviceWebviewBorderRadius,
+          options: serviceWebviewBorderRadii,
+        },
         sidebarServicesLocation: {
           label: intl.formatMessage(messages.sidebarServicesLocation),
           value: ifUndefined<number>(
@@ -1251,6 +1321,15 @@ class EditSettingsScreen extends Component<
             DEFAULT_APP_SETTINGS.alwaysShowWorkspaces,
           ),
           default: DEFAULT_APP_SETTINGS.alwaysShowWorkspaces,
+          type: 'checkbox',
+        },
+        useCompactWorkspaceDrawer: {
+          label: intl.formatMessage(messages.useCompactWorkspaceDrawer),
+          value: ifUndefined<boolean>(
+            settings.all.app.useCompactWorkspaceDrawer,
+            DEFAULT_APP_SETTINGS.useCompactWorkspaceDrawer,
+          ),
+          default: DEFAULT_APP_SETTINGS.useCompactWorkspaceDrawer,
           type: 'checkbox',
         },
         hideAllServicesWorkspace: {

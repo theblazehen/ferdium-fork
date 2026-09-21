@@ -14,6 +14,7 @@ import {
 } from 'electron';
 
 import { initialize } from 'electron-react-titlebar/main';
+import { setupWebAuthn } from 'electron-webauthn-linux';
 import windowStateKeeper from 'electron-window-state';
 import { emptyDirSync, ensureFileSync } from 'fs-extra';
 import minimist from 'minimist';
@@ -39,10 +40,11 @@ import {
 import { ifUndefined } from './jsUtils';
 
 import Settings from './electron/Settings';
-import handleDeepLink from './electron/deepLinking';
+import handleDeepLink, { getDeepLinkFromArgs } from './electron/deepLinking';
 import './electron/exception';
 
 import ipcApi from './electron/ipc-api';
+import { popupWindowOptions } from './electron/popupWindowOptions';
 import isPositionValid from './electron/windowUtils';
 import { mainIpcHandler as basicAuthHandler } from './features/basicAuth';
 import DBus from './lib/DBus';
@@ -109,6 +111,40 @@ const shortcutSettings = new Settings('shortcuts', DEFAULT_SHORTCUTS);
 const retrieveSettingValue = (key: string, defaultValue: boolean | string) =>
   ifUndefined<boolean | string>(settings.get(key), defaultValue);
 
+const normalizeAppSettings = (): void => {
+  if (isMac || settings.get('enableSystemTray') !== false) {
+    return;
+  }
+
+  const normalizedSettings: Partial<typeof DEFAULT_APP_SETTINGS> = {};
+
+  if (settings.get('runInBackground') !== false) {
+    normalizedSettings.runInBackground = false;
+  }
+
+  if (settings.get('startMinimized') !== false) {
+    normalizedSettings.startMinimized = false;
+  }
+
+  if (settings.get('minimizeToSystemTray') !== false) {
+    normalizedSettings.minimizeToSystemTray = false;
+  }
+
+  if (settings.get('closeToSystemTray') !== false) {
+    normalizedSettings.closeToSystemTray = false;
+  }
+
+  if (Object.keys(normalizedSettings).length > 0) {
+    debug(
+      'Normalizing app settings for disabled system tray',
+      normalizedSettings,
+    );
+    settings.set(normalizedSettings);
+  }
+};
+
+normalizeAppSettings();
+
 // TODO: Commenting out sentry to fix https://github.com/ferdium/ferdium-app/issues/814
 // if (retrieveSettingValue('sentry', DEFAULT_APP_SETTINGS.sentry)) {
 //   // eslint-disable-next-line global-require
@@ -139,8 +175,11 @@ if (gotTheLock) {
       if (isWindows) {
         onDidLoad((window: BrowserWindow) => {
           // Keep only command line / deep linked arguments
-          const url = argv.slice(1);
-          handleDeepLink(window, url.toString());
+          const deepLink = getDeepLinkFromArgs(argv);
+
+          if (deepLink) {
+            handleDeepLink(window, deepLink);
+          }
 
           if (argv.includes('--reset-window')) {
             // Needs to be delayed to not interfere with mainWindow.restore();
@@ -262,63 +301,80 @@ const createWindow = () => {
     if (contents.getType() === 'webview') {
       enableWebContents(contents);
 
-      // FORK: Port upstream's per-session permission policy, including the
-      // permission checks Google uses to discover FIDO2 security keys.
-      const serviceSession = contents.session;
-      if (!configuredPermissionSessions.has(serviceSession)) {
-        configuredPermissionSessions.add(serviceSession);
-        const allowedPermissions = [
-          'media',
-          'notifications',
-          'fullscreen',
-          'pointerLock',
-          'display-capture',
-          'idle-detection',
-          'clipboard-read',
-          'clipboard-sanitized-write',
-          'speaker-selection',
-        ];
-        const allowedChecks = new Set([
-          ...allowedPermissions,
-          'hid',
-          'serial',
-          'usb',
-        ]);
+      // Set permission handlers on service webview sessions.
+      // setPermissionRequestHandler allows safe permissions and denies unknown ones.
+      // setPermissionCheckHandler additionally allows hid/serial/usb feature detection
+      // (actual device access is gated by select-hid-device/select-usb-device events).
+      const ses = contents.session;
+      if (!configuredPermissionSessions.has(ses)) {
+        configuredPermissionSessions.add(ses);
 
-        serviceSession.setPermissionRequestHandler(
-          (webContents, permission, callback) => {
-            if (allowedPermissions.includes(permission)) {
-              callback(true);
-              return;
-            }
-            debug(
-              `Denied permission request: ${permission} from ${webContents?.getURL()}`,
-            );
-            callback(false);
-          },
-        );
-        serviceSession.setPermissionCheckHandler((_webContents, permission) =>
-          allowedChecks.has(permission),
-        );
+        ses.setPermissionRequestHandler((webContents, permission, callback) => {
+          const allowedPermissions = [
+            'media',
+            'notifications',
+            'fullscreen',
+            'pointerLock',
+            'display-capture',
+            'idle-detection',
+            'clipboard-read',
+            'clipboard-sanitized-write',
+            'speaker-selection',
+          ];
+
+          if (allowedPermissions.includes(permission)) {
+            callback(true);
+            return;
+          }
+
+          debug(
+            `Denied permission request: ${permission} from ${webContents?.getURL()}`,
+          );
+          callback(false);
+        });
+
+        ses.setPermissionCheckHandler((_webContents, permission) => {
+          const allowedChecks = [
+            'media',
+            'notifications',
+            'fullscreen',
+            'pointerLock',
+            'display-capture',
+            'idle-detection',
+            'clipboard-read',
+            'clipboard-sanitized-write',
+            'hid',
+            'serial',
+            'usb',
+            'speaker-selection',
+          ];
+
+          return allowedChecks.includes(permission);
+        });
       }
 
-      // FORK: OAuth popups need an in-app child with the opener's session and
-      // window.opener intact; ordinary links still belong in the browser.
-      contents.setWindowOpenHandler(({ url, disposition }) => {
-        if (disposition === 'new-window') {
-          return {
-            action: 'allow',
-            outlivesOpener: false,
-            overrideBrowserWindowOptions: {
-              parent: mainWindow,
-              fullscreenable: false,
-              webPreferences: { session: contents.session },
-            },
-          };
-        }
-        openExternalUrl(url);
-        return { action: 'deny' };
-      });
+      // FORK: Keep every service-created window inside Ferdium while using
+      // upstream's sanitized, movable popup options and Linux WebAuthn preload.
+      // The opener's session is retained so authentication cookies flow back.
+      contents.setWindowOpenHandler(({ features }) => ({
+        action: 'allow',
+        outlivesOpener: false,
+        overrideBrowserWindowOptions: {
+          ...popupWindowOptions(features, isPositionValid),
+          webPreferences: isLinux
+            ? {
+                session: contents.session,
+                preload: join(
+                  __dirname,
+                  'webview',
+                  'webauthn-popup-preload.js',
+                ),
+                contextIsolation: true,
+                sandbox: true,
+              }
+            : { session: contents.session },
+        },
+      }));
 
       contents.on('did-create-window', child => {
         enableWebContents(child.webContents);
@@ -384,8 +440,11 @@ const createWindow = () => {
   // Windows deep linking handling on app launch
   if (isWindows) {
     onDidLoad((window: BrowserWindow) => {
-      const url = process.argv.slice(1);
-      handleDeepLink(window, url.toString());
+      const deepLink = getDeepLinkFromArgs(process.argv);
+
+      if (deepLink) {
+        handleDeepLink(window, deepLink);
+      }
     });
   }
 
@@ -418,8 +477,9 @@ const createWindow = () => {
         }
       } else if (isMac && mainWindow?.isFullScreen()) {
         debug('Window: leaveFullScreen and hide');
-        mainWindow.once('show', () => mainWindow?.setFullScreen(true));
-        mainWindow.once('leave-full-screen', () => mainWindow?.hide());
+        mainWindow.once('leave-full-screen', () => {
+          mainWindow?.hide();
+        });
         mainWindow.setFullScreen(false);
       } else {
         debug('Window: hide');
@@ -603,6 +663,16 @@ app.on('ready', () => {
   }
 
   initialize();
+
+  // Initialize WebAuthn/passkey support on Linux
+  if (isLinux) {
+    setupWebAuthn({
+      storagePath: userDataPath(),
+      enableHardwareKeys: true,
+    }).catch(error => {
+      debug('WebAuthn setup failed:', error.message);
+    });
+  }
 
   createWindow();
 });
@@ -886,10 +956,26 @@ app.on('activate', () => {
   }
 });
 
-// FORK: Removed conflicting generic setWindowOpenHandler — the
-// webview-specific handler above now handles popup classification.
-// Non-webview contents (main window) keep the default deny behavior
-// set in createWindow().
+// Default handler for windows that are not service webviews, e.g. popups
+// opened by a service (the main window and the webviews install their own
+// handlers in createWindow). Links that would open a new tab go to the default
+// browser; nested window.open() popups are allowed.
+app.on('web-contents-created', (_createdEvent, contents) => {
+  contents.setWindowOpenHandler(({ url, disposition, features }) => {
+    if (disposition === 'foreground-tab') {
+      openExternalUrl(url);
+      return { action: 'deny' };
+    }
+
+    return {
+      action: 'allow',
+      overrideBrowserWindowOptions: popupWindowOptions(
+        features,
+        isPositionValid,
+      ),
+    };
+  });
+});
 
 app.on('will-finish-launching', () => {
   // Protocol handler for macOS

@@ -1,4 +1,5 @@
 import { Menu } from '@electron/remote';
+import { mdiApps } from '@mdi/js';
 import classnames from 'classnames';
 import type { MenuItemConstructorOptions } from 'electron';
 import { noop } from 'lodash';
@@ -10,6 +11,7 @@ import {
   injectIntl,
 } from 'react-intl';
 import withStyles, { type WithStylesProps } from 'react-jss';
+import Icon from '../../../components/ui/icon';
 import { altKey, cmdOrCtrlShortcutKey } from '../../../environment';
 import { acceleratorString } from '../../../jsUtils';
 
@@ -20,31 +22,50 @@ const messages = defineMessages({
   },
   contextMenuEdit: {
     id: 'workspaceDrawer.item.contextMenuEdit',
-    defaultMessage: 'edit',
+    defaultMessage: 'Edit',
+  },
+  services: {
+    id: 'workspaceDrawer.item.services',
+    defaultMessage: 'services',
   },
 });
 
 const itemTransition = window?.matchMedia(
   '(prefers-reduced-motion: no-preference)',
 )
-  ? 'background-color 300ms ease-out'
+  ? 'background-color 300ms ease-out, border-color 300ms ease-out'
   : 'none';
 
 const styles = theme => ({
   item: {
+    boxSizing: 'border-box',
     height: '67px',
     padding: `15px ${theme.workspaces.drawer.padding}px`,
-    borderBottom: `1px solid ${theme.workspaces.drawer.listItem.border}`,
+    margin:
+      '0 var(--webview-padding) var(--webview-padding) var(--webview-padding)',
+    border: '1px solid transparent',
+    borderRadius: 4,
     transition: itemTransition,
     '&:first-child': {
-      borderTop: `1px solid ${theme.workspaces.drawer.listItem.border}`,
+      borderTop: '1px solid transparent',
     },
     '&:hover': {
       backgroundColor: theme.workspaces.drawer.listItem.hoverBackground,
     },
+    '&.compact': {
+      padding: '4px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      textAlign: 'center',
+      fontSize: '16px',
+      width: '100%',
+      margin: '0 0 var(--webview-padding) 0',
+    },
   },
   isActiveItem: {
     backgroundColor: theme.workspaces.drawer.listItem.activeBackground,
+    borderColor: theme.workspaces.drawer.listItem.border,
     '&:hover': {
       backgroundColor: theme.workspaces.drawer.listItem.activeBackground,
     },
@@ -52,6 +73,14 @@ const styles = theme => ({
   name: {
     marginTop: '4px',
     color: theme.workspaces.drawer.listItem.name.color,
+    '&.compact': {
+      marginTop: 0,
+      display: '-webkit-box',
+      WebkitLineClamp: 2,
+      WebkitBoxOrient: 'vertical',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+    },
   },
   activeName: {
     color: theme.workspaces.drawer.listItem.name.activeColor,
@@ -59,15 +88,23 @@ const styles = theme => ({
   services: {
     display: 'block',
     fontSize: '11px',
-    marginTop: '5px',
     color: theme.workspaces.drawer.listItem.services.color,
     whiteSpace: 'nowrap',
     textOverflow: 'ellipsis',
     overflow: 'hidden',
     lineHeight: '15px',
+    '&.compact': {
+      display: 'none',
+    },
   },
   activeServices: {
     color: theme.workspaces.drawer.listItem.services.active,
+  },
+  icon: {
+    fill: theme.workspaces.drawer.listItem.name.color,
+  },
+  activeIcon: {
+    fill: theme.workspaces.drawer.listItem.name.activeColor,
   },
 });
 
@@ -78,6 +115,7 @@ interface IProps extends WithStylesProps<typeof styles>, WrappedComponentProps {
   services: string[];
   onContextMenuEditClick?: (() => void) | null;
   shortcutIndex: number;
+  isCompact: boolean;
 }
 
 @observer
@@ -92,7 +130,10 @@ class WorkspaceDrawerItem extends Component<IProps> {
       services,
       shortcutIndex,
       intl,
+      isCompact,
     } = this.props;
+
+    const compactClass = isCompact ? 'compact' : '';
 
     const contextMenuTemplate: MenuItemConstructorOptions[] = [
       {
@@ -116,6 +157,7 @@ class WorkspaceDrawerItem extends Component<IProps> {
         className={classnames([
           classes.item,
           isActive ? classes.isActiveItem : null,
+          compactClass,
         ])}
         onClick={onClick}
         onContextMenu={() => {
@@ -124,6 +166,7 @@ class WorkspaceDrawerItem extends Component<IProps> {
           }
         }}
         onKeyDown={noop}
+        aria-label={isCompact ? name : undefined}
         data-tooltip-id="tooltip-workspaces-drawer"
         data-tooltip-content={acceleratorString({
           index: shortcutIndex,
@@ -134,14 +177,31 @@ class WorkspaceDrawerItem extends Component<IProps> {
           className={classnames([
             classes.name,
             isActive ? classes.activeName : null,
+            compactClass,
           ])}
         >
-          {name}
+          {compactClass ? (
+            shortcutIndex === 0 ? (
+              <Icon
+                icon={mdiApps}
+                size={1.5}
+                className={classnames([
+                  classes.icon,
+                  isActive ? classes.activeIcon : null,
+                ])}
+              />
+            ) : (
+              [...name][0]
+            )
+          ) : (
+            name
+          )}
         </span>
         <span
           className={classnames([
             classes.services,
             isActive ? classes.activeServices : null,
+            compactClass,
           ])}
         >
           {services.length > 0

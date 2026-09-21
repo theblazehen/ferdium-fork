@@ -9,7 +9,7 @@ export default class UserAgent {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   _didNavigateListener = (_event: any): void => {};
 
-  @observable.ref webview: ElectronWebView = null;
+  @observable.ref webview: ElectronWebView | null = null;
 
   @observable userAgentPref: string | null = null;
 
@@ -67,7 +67,11 @@ export default class UserAgent {
     return this.serviceUserAgentPref || this.defaultUserAgent;
   }
 
-  @action setWebviewReference(webview: ElectronWebView): void {
+  @action setWebviewReference(webview: ElectronWebView | null): void {
+    if (this.webview === webview) {
+      return;
+    }
+
     this.webview = webview;
   }
 
@@ -77,12 +81,23 @@ export default class UserAgent {
     // supported WebLite flow. Apply it only after navigation: changing the UA
     // during will-navigate cancels pending POST/SAML navigations in Electron.
     if (url.startsWith('https://accounts.google.com')) {
-      debug('Setting Google WebLite user agent for url', url);
-      this.webview.userAgent =
-        this.serviceUserAgentPref || this.userAgentWithoutChromeVersion;
+      debug('Setting user agent to chromeless for url', url);
+      // Set chromeless user agent (without Chrome version) for Google accounts.
+      // Note: This is intentionally only called from did-navigate (after navigation
+      // completes), never from will-navigate or did-redirect-navigation. Setting
+      // webview.userAgent during a pending navigation or redirect chain causes
+      // Electron to cancel the navigation via SetUserAgentOverride(), which breaks
+      // cross-origin form POST requests (e.g. SAML ACS endpoints) and redirect chains.
+      if (this.webview) {
+        this.webview.userAgent =
+          this.serviceUserAgentPref || this.userAgentWithoutChromeVersion;
+      }
     } else {
-      this.webview.userAgent =
-        this.serviceUserAgentPref || this.defaultUserAgent;
+      debug('Setting user agent to default for url', url);
+      if (this.webview) {
+        this.webview.userAgent =
+          this.serviceUserAgentPref || this.defaultUserAgent;
+      }
     }
   }
 

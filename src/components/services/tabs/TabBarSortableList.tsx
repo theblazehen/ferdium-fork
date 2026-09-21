@@ -10,6 +10,9 @@ interface IProps {
   showServiceNameSetting: boolean;
   showMessageBadgesEvenWhenMuted: boolean;
   services: Service[];
+  // FORK: Grouped sidebar lists are vertical; keep upstream horizontal wheel
+  // support optional for compatibility with the shared sortable component.
+  useHorizontalStyle?: boolean;
   setActive: (args: { serviceId: string }) => void;
   openSettings: (args: { path: string }) => void;
   reload: (args: { serviceId: string }) => void;
@@ -48,6 +51,7 @@ class TabBarSortableList extends Component<IProps> {
       showMessageBadgesEvenWhenMuted,
       shortcutIndexOffset = 0,
       groupId,
+      useHorizontalStyle = false,
     } = this.props;
 
     return (
@@ -55,6 +59,15 @@ class TabBarSortableList extends Component<IProps> {
         // FORK: each workspace group renders its own sortable list.
         className="tabs tabs--workspace-group"
         data-workspace-group-id={groupId}
+        onWheel={event => {
+          if (useHorizontalStyle) {
+            const target = event.currentTarget;
+
+            target.scrollBy({
+              left: event.deltaY,
+            });
+          }
+        }}
       >
         {services.map((service, index) => (
           <TabItem

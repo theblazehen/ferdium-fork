@@ -73,8 +73,9 @@ jobs:
           # Defensive: update submodules in the develop branch
           git checkout develop
           git submodule update --init --recursive --remote --rebase --force
-          git add .
-          git commit -am "Update submodules [skip ci]" --no-verify || true
+          # Git 2.54+ requires --force and an explicit path for submodules with ignore=all.
+          git add --force recipes
+          git commit -m "Update submodules [skip ci]" --no-verify || true
           git push origin develop --no-verify
           git checkout -
 
@@ -109,7 +110,7 @@ jobs:
             #   there were other changes coming from the 'develop' branch (or)
             #   this is a manual trigger with the key-phrase
             git checkout develop
-            pnpm version -m "%s [skip ci]" prerelease --preid=nightly
+            pnpm version prerelease --preid=nightly --message "%s [skip ci]"
             git commit --all --amend --no-edit --no-verify
             git push origin develop --no-verify
 
@@ -298,6 +299,15 @@ jobs:
         run: |
           pnpm lint
           pnpm test
+
+      - name: Setup LXD
+        uses: canonical/setup-lxd@v1
+        with:
+          channel: latest/stable
+
+      - name: Install Snapcraft
+        run: sudo snap install snapcraft --channel=8.x/stable --classic
+
       - name: Build Ferdium without publish for any branch not 'nightly' and not 'release'
         if: ${{ env.GIT_BRANCH_NAME != 'nightly' && env.GIT_BRANCH_NAME != 'release' }}
         env:
@@ -311,8 +321,7 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: false
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_LOGIN }} # Note: Login no longer required https://forum.snapcraft.io/t/snapcraft-authentication-options/30473/21
         run: |
-          sudo snap install snapcraft --channel=7.x/stable --classic
-          pnpm build --publish always -c.snap.publish.repo=$SNAP_PUBLISH_REPO -c.snap.publish.channels=$SNAP_PUBLISH_CHANNEL
+          pnpm build --publish always -c.snapcraft.publish.repo=$SNAP_PUBLISH_REPO -c.snapcraft.publish.channels=$SNAP_PUBLISH_CHANNEL
           snapcraft logout
         shell: bash
 
@@ -366,14 +375,6 @@ jobs:
           node-version-file: '.nvmrc'
       - name: Install pnpm
         uses: pnpm/action-setup@v4
-      #TODO - Remove this once https://github.com/electron-userland/electron-builder/issues/6933#issuecomment-1213438889 is resolved
-      - name: Tweak pnpm.cjs
-        run: |
-          # Run the command to get the pnpm store path and store it in a variable
-          PNPM_BASEDIR=$(dirname "$(echo "$PNPM_HOME" | sed -e 's/\\/\//g' -e 's/^\([A-Za-z]\):/\/\1/')")
-
-          sed -i 's/\/usr\/bin\/env node/node/g' "$PNPM_BASEDIR/pnpm/bin/pnpm.cjs"
-        shell: bash
       - name: Install node dependencies
         uses: nick-fields/retry@v3
         with:

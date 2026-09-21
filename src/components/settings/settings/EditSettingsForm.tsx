@@ -91,7 +91,7 @@ const messages = defineMessages({
   lockedPasswordInfo: {
     id: 'settings.app.lockedPasswordInfo',
     defaultMessage:
-      "Please make sure to set a password you'll remember.\nIf you loose this password, you will have to reinstall Ferdium.",
+      "Please make sure to set a password you'll remember.\nIf you lose this password, you will have to reinstall Ferdium.",
   },
   lockInfo: {
     id: 'settings.app.lockInfo',
@@ -460,6 +460,13 @@ class EditSettingsForm extends Component<IProps, IState> {
           values.twoFactorAutoCatcherMatcher =
             DEFAULT_APP_SETTINGS.twoFactorAutoCatcherMatcher;
         }
+        if (!isMac && !values.enableSystemTray) {
+          values.runInBackground = false;
+          values.startMinimized = false;
+          values.minimizeToSystemTray = false;
+          values.closeToSystemTray = false;
+        }
+
         this.props.onSubmit(values);
       },
       onError: noop,
@@ -511,6 +518,7 @@ class EditSettingsForm extends Component<IProps, IState> {
       reloadAfterResume,
       useSelfSignedCertificates,
       sandboxServices,
+      enableSystemTray,
     } = window['ferdium'].stores.settings.all.app;
 
     let cacheSize;
@@ -655,9 +663,9 @@ class EditSettingsForm extends Component<IProps, IState> {
                   {intl.formatMessage(messages.sectionMain)}
                 </H2>
                 <Toggle {...form.$('autoLaunchOnStart').bind()} />
-                <Toggle {...form.$('runInBackground').bind()} />
+                {isMac && <Toggle {...form.$('runInBackground').bind()} />}
                 <Toggle {...form.$('confirmOnQuit').bind()} />
-                <Toggle {...form.$('enableSystemTray').bind()} />
+                {isMac && <Toggle {...form.$('enableSystemTray').bind()} />}
                 {reloadAfterResume && <Hr />}
                 <Toggle {...form.$('reloadAfterResume').bind()} />
                 {reloadAfterResume && (
@@ -666,12 +674,25 @@ class EditSettingsForm extends Component<IProps, IState> {
                     <Hr />
                   </div>
                 )}
-                <Toggle {...form.$('startMinimized').bind()} />
-                {isWindows && (
-                  <Toggle {...form.$('minimizeToSystemTray').bind()} />
-                )}
-                {isWindows && (
-                  <Toggle {...form.$('closeToSystemTray').bind()} />
+                {isMac && <Toggle {...form.$('startMinimized').bind()} />}
+                {!isMac && (
+                  <>
+                    {enableSystemTray && <Hr />}
+                    <Toggle {...form.$('enableSystemTray').bind()} />
+                    {enableSystemTray && (
+                      <>
+                        <Toggle {...form.$('runInBackground').bind()} />
+                        <Toggle {...form.$('startMinimized').bind()} />
+                        {isWindows && (
+                          <Toggle {...form.$('minimizeToSystemTray').bind()} />
+                        )}
+                        {isWindows && (
+                          <Toggle {...form.$('closeToSystemTray').bind()} />
+                        )}
+                        <Hr />
+                      </>
+                    )}
+                  </>
                 )}
 
                 <Toggle {...form.$('keepAllWorkspacesLoaded').bind()} />
@@ -818,12 +839,6 @@ class EditSettingsForm extends Component<IProps, IState> {
 
                 <H2 className="settings__section_header">
                   {intl.formatMessage(messages.sectionSandboxes)}
-                  <span
-                    className="badge badge--success"
-                    style={{ margin: '1rem' }}
-                  >
-                    beta
-                  </span>
                 </H2>
                 <p
                   className="settings__message"
@@ -937,6 +952,10 @@ class EditSettingsForm extends Component<IProps, IState> {
 
                 <Select field={form.$('serviceRibbonWidth')} />
 
+                <Select field={form.$('webviewPaddingSize')} />
+
+                <Select field={form.$('serviceWebviewBorderRadius')} />
+
                 <Select field={form.$('sidebarServicesLocation')} />
 
                 <Toggle {...form.$('useHorizontalStyle').bind()} />
@@ -956,6 +975,8 @@ class EditSettingsForm extends Component<IProps, IState> {
                 <Toggle {...form.$('hideDownloadButton').bind()} />
 
                 <Toggle {...form.$('alwaysShowWorkspaces').bind()} />
+
+                <Toggle {...form.$('useCompactWorkspaceDrawer').bind()} />
 
                 <Toggle {...form.$('hideAllServicesWorkspace').bind()} />
               </div>

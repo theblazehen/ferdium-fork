@@ -9,9 +9,10 @@ import {
 } from 'darkreader';
 import { contextBridge, ipcRenderer } from 'electron';
 import { pathExistsSync, readFileSync } from 'fs-extra';
-import { debounce, noop } from 'lodash';
+import { noop } from 'lodash';
 import { autorun, computed, makeObservable, observable } from 'mobx';
 
+import AutomaticLanguageDetection from './AutomaticLanguageDetection';
 import customDarkModeCss from './darkmode/custom';
 import ignoreList from './darkmode/ignore';
 
@@ -38,6 +39,7 @@ import {
   getSpellcheckerLocaleByFuzzyIdentifier,
   switchDict,
 } from './spellchecker';
+import { windowOpenShim } from './windowOpenShim';
 
 import type { AppStore } from '../@types/stores.types';
 import { DEFAULT_APP_SETTINGS } from '../config';
@@ -105,50 +107,9 @@ if (document.head) {
     forkObserver.observe(document.head, { childList: true });
   });
 }
-
-// FORK: Patching window.open — delegate ALL opens to Electron's native
-// window.open so the main-process setWindowOpenHandler can classify them
-// (allow OAuth popups in-app, send regular links to system browser).
-// The upstream code short-circuited plain window.open() calls via
-// sendToHost('new-window') which bypassed the main-process classifier.
-const originalWindowOpen = window.open;
-
-window.open = (url, frameName, features): WindowProxy | null => {
-  debug('window.open', url, frameName, features);
-  if (!url) {
-    // The service hasn't yet supplied a URL (as used in Skype).
-    // Return a new dummy window object and wait for the service to change the properties
-    const newWindow = {
-      location: {
-        href: '',
-      },
-    };
-
-    const checkInterval = setInterval(() => {
-      // Has the service changed the URL yet?
-      if (newWindow.location.href !== '') {
-        originalWindowOpen(newWindow.location.href, frameName, features);
-        clearInterval(checkInterval);
-      }
-    }, 0);
-
-    setTimeout(() => {
-      // Stop checking for location changes after 1 second
-      clearInterval(checkInterval);
-    }, 1000);
-
-    return newWindow as Window;
-  }
-
-  // Let all window.open calls go through Electron's native path so the
-  // main-process setWindowOpenHandler can classify and allow/deny them.
-  return originalWindowOpen(url, frameName, features);
-};
-
 // We can't override APIs here, so we first expose functions via 'window.ferdium',
 // then overwrite the corresponding field of the window object by injected JS.
 contextBridge.exposeInMainWorld('ferdium', {
-  open: window.open,
   setBadge: (
     direct: string | number | null | undefined,
     indirect: string | number | null | undefined,
@@ -168,9 +129,32 @@ contextBridge.exposeInMainWorld('ferdium', {
   getDisplayMediaSelector,
 });
 
+// WebAuthn/passkey support on Linux.
+// Expose the IPC bridge and inject the page script into the main world
+// BEFORE page scripts run, so navigator.credentials is patched in time.
+if (process.platform === 'linux') {
+  contextBridge.exposeInMainWorld('electronWebAuthn', {
+    create: (options: any) => ipcRenderer.invoke('webauthn:create', options),
+    get: (options: any) => ipcRenderer.invoke('webauthn:get', options),
+    hasCredentials: (rpId: string) =>
+      ipcRenderer.invoke('webauthn:hasCredentials', rpId),
+  });
+
+  // Inject page script at document-start (before any page JS).
+  // The <script> element runs in the main world (world 0), not the
+  // isolated preload world, which is what we need for monkey-patching.
+  const { webauthnPageScript } = require('electron-webauthn-linux');
+  process.once('document-start', () => {
+    const script = document.createElement('script');
+    script.textContent = webauthnPageScript;
+    document.documentElement.append(script);
+    script.remove();
+  });
+}
+
 ipcRenderer.sendToHost(
   'inject-js-unsafe',
-  'window.open = window.ferdium.open;',
+  windowOpenShim,
   notificationsClassDefinition,
   screenShareJs,
 );
@@ -223,6 +207,16 @@ class RecipeController {
 
   findInPage: FindInPage | null = null;
 
+  automaticLanguageDetection = new AutomaticLanguageDetection({
+    detectLanguage: sample =>
+      ipcRenderer.invoke('detect-language', {
+        sample,
+      }),
+    getServiceId: () => this.settings.service.id,
+    resolveSpellcheckerLocale: getSpellcheckerLocaleByFuzzyIdentifier,
+    switchDictionary: switchDict,
+  });
+
   async initialize() {
     for (const channel of Object.keys(this.ipcEvents)) {
       ipcRenderer.on(channel, (...args) => {
@@ -266,6 +260,12 @@ class RecipeController {
         window.history.forward();
       }
     });
+
+    window.addEventListener('unload', () => this.destroy(), { once: true });
+  }
+
+  destroy() {
+    this.automaticLanguageDetection.destroy();
   }
 
   loadRecipeModule(_event, config, recipe) {
@@ -304,7 +304,11 @@ class RecipeController {
     const userCss = join(recipe.path, 'user.css');
     if (pathExistsSync(userCss)) {
       const data = readFileSync(userCss);
-      styles.innerHTML += data.toString();
+      // textContent, not innerHTML: innerHTML is a Trusted Types sink, so
+      // sites sending `require-trusted-types-for 'script'` reject the
+      // assignment. That threw here before reaching the user.js block below,
+      // so a single user.css took user.js down with it (ferdium#1086).
+      styles.textContent += data.toString();
       debug('Loaded user.css from: ', userCss);
     }
     document.querySelector('head')?.append(styles);
@@ -359,16 +363,19 @@ class RecipeController {
       let { spellcheckerLanguage } = this;
       debug(`Setting spellchecker language to ${spellcheckerLanguage}`);
       if (spellcheckerLanguage.includes('automatic')) {
-        this.automaticLanguageDetection();
+        this.automaticLanguageDetection.enable();
         debug(
           'Found `automatic` locale, falling back to user locale until detected',
           this.settings.app.locale,
         );
         spellcheckerLanguage = this.settings.app.locale;
+      } else {
+        this.automaticLanguageDetection.disable();
       }
       switchDict(spellcheckerLanguage, this.settings.service.id);
     } else {
       debug('Disable spellchecker');
+      this.automaticLanguageDetection.disable();
     }
 
     if (!this.recipe) {
@@ -482,45 +489,6 @@ class RecipeController {
   serviceIdEcho(event) {
     debug('Received a service echo ping');
     event.sender.send('service-id', this.settings.service.id);
-  }
-
-  async automaticLanguageDetection() {
-    window.addEventListener(
-      'keyup',
-      debounce(async e => {
-        const element = e.target;
-
-        if (!element) return;
-
-        let value = '';
-        if (element.isContentEditable) {
-          value = element.textContent;
-        } else if (element.value) {
-          value = element.value;
-        }
-
-        // Force a minimum length to get better detection results
-        if (value.length < 25) return;
-
-        debug('Detecting language for', value);
-        const locale = await ipcRenderer.invoke('detect-language', {
-          sample: value,
-        });
-        if (!locale) {
-          return;
-        }
-
-        const spellcheckerLocale =
-          getSpellcheckerLocaleByFuzzyIdentifier(locale);
-        debug(
-          'Language detected reliably, setting spellchecker language to',
-          spellcheckerLocale,
-        );
-        if (spellcheckerLocale) {
-          switchDict(spellcheckerLocale, this.settings.service.id);
-        }
-      }, 225),
-    );
   }
 
   toggleToTalk() {

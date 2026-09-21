@@ -4,21 +4,28 @@ directories:
 
 appId: 'org.ferdium.ferdium-app'
 
+electronFuses:
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+
 publish:
   provider: github
 
-snap:
-  base: core22
-  plugs: ['default', 'camera', 'audio-record', 'removable-media']
-  allowNativeWayland: true
-  executableArgs:
-    [
-      '$(sh -c ''[ "$(snapctl get wayland-native)" != "false" ] && echo --ozone-platform-hint=auto || true'')',
-    ]
-  hooks: ./build-helpers/snap-hooks
+snapcraft:
+  base: core24
   publish:
     provider: snapStore
-  description: 'Ferdium is your cross-platform messaging app / former heir to the throne of Austria-Hungary which brings your chat & messaging services together into one application. For enabling webcam access you need to connect "camera" plug to snap, and for microphone with PulseAudio the "audio-record" plug. This can be done in Snap GUI or via command: `snap connect ferdium:camera; snap connect ferdium:audio-record`.'
+  core24:
+    useLXD: true
+    extensions:
+      - gnome
+    plugs:
+      - default
+      - browser-support
+      - camera
+      - audio-record
+      - removable-media
+    description: 'Ferdium is your cross-platform messaging app / former heir to the throne of Austria-Hungary which brings your chat & messaging services together into one application. For enabling webcam access you need to connect "camera" plug to snap, and for microphone with PulseAudio the "audio-record" plug. This can be done in Snap GUI or via command: `snap connect ferdium:camera; snap connect ferdium:audio-record`.'
 
 nsis:
   perMachine: false
@@ -81,20 +88,26 @@ mac:
     - target: zip
       arch: [x64, arm64]
   extendInfo:
-    NSCameraUsageDescription: 'This app requires camera access for video chats'
-    NSMicrophoneUsageDescription: 'This app requires microphone access for voice chats'
-    NSFocusStatusUsageDescription: 'This app requires focus access for DND functionality'
+    LSMinimumSystemVersion: "13.0.0"
+    NSCameraUsageDescription: "This app requires camera access for video chats"
+    NSMicrophoneUsageDescription: "This app requires microphone access for voice chats"
+    NSAudioCaptureUsageDescription: "This app requires system audio capture access for screen sharing"
+    NSFocusStatusUsageDescription: "This app requires focus access for DND functionality"
 
 win:
   artifactName: '${productName}-${os}-Installer-${version}-${arch}.${ext}'
   icon: ./build-helpers/images/icon.ico
   target:
     - target: nsis
-      arch: [x64, ia32, arm64]
+      arch: [x64, arm64]
     - target: portable
-      arch: [x64, ia32, arm64]
+      arch: [x64, arm64]
+    # Temporary ARM64 ZIP build
+    - target: zip
+      arch: [arm64]
   # The name of the CN appearing in the certificate must be present in the publisherName list below
-  publisherName: ['Ferdium Contributors', 'Ambroise Grau']
+  signtoolOptions:
+    publisherName: ["Ferdium Contributors", "Ambroise Grau"]
   # Remove the verification for a signature to allow auto-update without signed certificate
   verifyUpdateCodeSignature: false
 

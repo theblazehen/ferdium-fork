@@ -1,10 +1,9 @@
-import { basename, join } from 'node:path';
+import { join } from 'node:path';
 import { webContents } from '@electron/remote';
-import { ipcRenderer } from 'electron';
+import { type WebContents, ipcRenderer } from 'electron';
 import { action, autorun, computed, makeObservable, observable } from 'mobx';
 import type ElectronWebView from 'react-electron-web-view';
 
-import { v4 as uuidV4 } from 'uuid';
 import { needsToken } from '../api/apiBase';
 import { DEFAULT_SERVICE_ORDER, DEFAULT_SERVICE_SETTINGS } from '../config';
 import { isMac } from '../environment';
@@ -12,14 +11,32 @@ import { todosStore } from '../features/todos';
 import { getFaviconUrl } from '../helpers/favicon-helpers';
 import { normalizedUrl } from '../helpers/url-helpers';
 import { ifUndefined } from '../jsUtils';
+import { downloadController } from './DownloadController';
 import type { IRecipe } from './Recipe';
 import UserAgent from './UserAgent';
 
 const debug = require('../preload-safe-debug')('Ferdium:Service');
 
-// Global registry for active partitions
-// This is needed to prevent events of the same partition from being registered multiple times (when using custom sandboxes)
-const activePartitions = new Set<string>();
+const LOAD_RETRY_DELAYS = [10_000, 30_000, 60_000];
+// Chromium net errors for transient network failures. Certificate, permission,
+// authentication and blocked-request errors still require user intervention.
+const RETRYABLE_LOAD_ERRORS = new Set([
+  -7, // TIMED_OUT
+  -21, // NETWORK_CHANGED
+  -100, // CONNECTION_CLOSED
+  -101, // CONNECTION_RESET
+  -102, // CONNECTION_REFUSED
+  -104, // CONNECTION_FAILED
+  -105, // NAME_NOT_RESOLVED
+  -106, // INTERNET_DISCONNECTED
+  -109, // ADDRESS_UNREACHABLE
+  -118, // CONNECTION_TIMED_OUT
+  -137, // NAME_RESOLUTION_FAILED
+  -352, // HTTP2_PING_FAILED
+]);
+
+// WebContents listeners belong to each webview, not to its shared session.
+const initializedWebContents = new WeakSet<WebContents>();
 
 interface DarkReaderInterface {
   brightness: number;
@@ -50,6 +67,8 @@ export default class Service {
   @observable unreadIndirectMessageCount: number = 0;
 
   @observable dialogTitle: string = '';
+
+  @observable pageTitle: string = '';
 
   @observable order: number = DEFAULT_SERVICE_ORDER;
 
@@ -104,6 +123,19 @@ export default class Service {
   @observable isError: boolean = false;
 
   @observable errorMessage: string = '';
+
+  private loadErrorCode: number | null = null;
+
+  private loadFailedAt: number = 0;
+
+  private loadRetryAttempts: number = 0;
+
+  private lastLoadRetryAt: number | null = null;
+
+  // A failure after a real page committed must not discard that page's state.
+  private hasCommittedNavigation: boolean = false;
+
+  private retryingWebview: ElectronWebView | null = null;
 
   @observable isUsingCustomUrl: boolean = false;
 
@@ -273,10 +305,11 @@ export default class Service {
   }
 
   @action _didStartLoading(): void {
+    // Keep a failed load visible until a real main-frame navigation commits.
+    // Subframe activity and Chromium's error document must not clear it.
     this.hasCrashed = false;
     this.isLoading = true;
     this.isLoadingPage = true;
-    this.isError = false;
   }
 
   @action _didStopLoading(): void {
@@ -298,17 +331,91 @@ export default class Service {
 
     if (!this.isError) {
       this.isFirstLoad = false;
+      this.loadRetryAttempts = 0;
+      this.lastLoadRetryAt = null;
     }
   }
 
-  @action _didFailLoad(event: { errorDescription: string }): void {
+  @action _didNavigate(): void {
+    this.hasCommittedNavigation = true;
     this.isError = false;
+    this.errorMessage = '';
+    this.loadErrorCode = null;
+  }
+
+  @action _didFailLoad(event: {
+    errorCode: number;
+    errorDescription: string;
+  }): void {
+    this.isError = true;
+    this.loadErrorCode = event.errorCode;
+    this.loadFailedAt = Date.now();
     this.errorMessage = event.errorDescription;
     this.isLoading = false;
     this.isLoadingPage = false;
     // FORK: Wake-up transition aborted on load failure
     if (this.isWakingUp) {
       this.isWakingUp = false;
+    }
+  }
+
+  @action retryFailedLoad(isOnline: boolean, onActivation = false): void {
+    const { webview } = this;
+    if (
+      !this.isError ||
+      this.hasCommittedNavigation ||
+      this.loadErrorCode === null ||
+      !RETRYABLE_LOAD_ERRORS.has(this.loadErrorCode) ||
+      !isOnline ||
+      !this.isEnabled ||
+      !this.isAttached ||
+      !webview ||
+      this.retryingWebview === webview ||
+      this.isLoading ||
+      this.isHibernating ||
+      this.isMediaPlaying ||
+      this.hasCrashed ||
+      this.isServiceAccessRestricted ||
+      this.isTodosService
+    ) {
+      return;
+    }
+
+    const now = Date.now();
+    const delay = LOAD_RETRY_DELAYS[this.loadRetryAttempts];
+    if (
+      (this.lastLoadRetryAt !== null &&
+        now - this.lastLoadRetryAt < LOAD_RETRY_DELAYS[0]) ||
+      (!onActivation &&
+        (delay === undefined ||
+          now - Math.max(this.loadFailedAt, this.lastLoadRetryAt ?? 0) < delay))
+    ) {
+      return;
+    }
+
+    this.lastLoadRetryAt = now;
+    this.loadRetryAttempts = Math.min(
+      this.loadRetryAttempts + 1,
+      LOAD_RETRY_DELAYS.length,
+    );
+    // Mark the request in flight before calling Electron; tab activation and
+    // maintenance can otherwise start overlapping navigations.
+    this.retryingWebview = webview;
+    try {
+      // Open the configured service URL with a fresh GET,
+      // rather than replaying a failed form submission or authentication URL.
+      Promise.resolve(webview.loadURL(this.url))
+        .catch(() => {
+          // did-fail-load records the error. Do not let a stale rejection change
+          // the state of a newer navigation or a replacement webview.
+          debug('Service load retry failed', this.id);
+        })
+        .finally(() => {
+          if (this.retryingWebview === webview) this.retryingWebview = null;
+        });
+    } catch {
+      this.retryingWebview = null;
+      debug('Unable to start service load retry', this.id);
     }
   }
 
@@ -472,15 +579,59 @@ export default class Service {
     return this.recipe.partition || `persist:service-${this.id}`;
   }
 
-  // FORK: openWindow param removed — new-window event removed in Electron 37,
-  // popup handling moved to setWindowOpenHandler in main process (src/index.ts).
+  // FORK: openWindow param removed — popup handling moved to
+  // setWindowOpenHandler in the main process (src/index.ts).
   initializeWebViewEvents({ handleIPCMessage, stores }): void {
-    const webviewWebContents = webContents.fromId(
-      this.webview.getWebContentsId(),
-    );
+    const { webview } = this;
+    if (!webview) {
+      debug(
+        'Webview is no longer available; skipping event initialization',
+        this.name,
+      );
+      return;
+    }
 
-    this.userAgentModel.setWebviewReference(this.webview);
+    let webviewWebContents;
+    try {
+      webviewWebContents = webContents.fromId(webview.getWebContentsId());
+    } catch (error) {
+      // The <webview> can still be mid-attach here even after the
+      // setTimeout(0) workaround in ServiceWebview's onDidAttach (see
+      // https://github.com/electron/electron/issues/31918). getWebContentsId
+      // throws in that case instead of returning a usable id. Rather than
+      // assuming a fixed delay is enough (and silently never initializing
+      // the service, leaving it stuck in its default "loading" state
+      // forever), retry once the webview itself reports it's actually
+      // ready.
+      debug(
+        'Webview was not ready yet, retrying once dom-ready fires',
+        this.name,
+        error,
+      );
+      webview.addEventListener(
+        'dom-ready',
+        () => {
+          // The service may have been detached or assigned a replacement
+          // webview while this one was finishing its attach lifecycle.
+          if (this.webview !== webview) {
+            debug('Ignoring dom-ready from a stale webview', this.name);
+            return;
+          }
 
+          this.initializeWebViewEvents({
+            handleIPCMessage,
+            stores,
+          });
+        },
+        { once: true },
+      );
+      return;
+    }
+    this.userAgentModel.setWebviewReference(webview);
+    downloadController.registerWebContents({
+      serviceId: this.id,
+      webContents: webviewWebContents,
+    });
     // If the recipe has implemented 'modifyRequestHeaders',
     // Send those headers to ipcMain so that it can be set in session
     if (typeof this.recipe.modifyRequestHeaders === 'function') {
@@ -528,33 +679,37 @@ export default class Service {
     // Electron 37 no longer emits this event — popup classification is
     // handled by setWindowOpenHandler in the main process (src/index.ts).
 
+    this.webview.addEventListener('did-start-navigation', event => {
+      if (this.webview === webview && event.isMainFrame && !event.isInPlace) {
+        this.hasCommittedNavigation = false;
+      }
+    });
+
     this.webview.addEventListener('did-start-loading', event => {
+      if (this.webview !== webview) return;
       debug('Did start load', this.name, event);
 
       this._didStartLoading();
     });
 
     this.webview.addEventListener('did-stop-loading', event => {
+      if (this.webview !== webview) return;
       debug('Did stop load', this.name, event);
 
       this._didStopLoading();
     });
 
-    // eslint-disable-next-line unicorn/consistent-function-scoping
-    const didLoad = () => {
-      this._didLoad();
-    };
-
-    this.webview.addEventListener('did-frame-finish-load', didLoad.bind(this));
-    this.webview.addEventListener('did-navigate', didLoad.bind(this));
+    this.webview.addEventListener('did-frame-finish-load', event => {
+      if (this.webview === webview && event.isMainFrame) this._didLoad();
+    });
+    this.webview.addEventListener('did-navigate', () => {
+      if (this.webview === webview) this._didNavigate();
+    });
 
     this.webview.addEventListener('did-fail-load', event => {
+      if (this.webview !== webview) return;
       debug('Service failed to load', this.name, event);
-      if (
-        event.isMainFrame &&
-        event.errorCode !== -21 &&
-        event.errorCode !== -3
-      ) {
+      if (event.isMainFrame && event.errorCode !== -3) {
         this._didFailLoad(event);
       }
     });
@@ -591,18 +746,10 @@ export default class Service {
     });
 
     if (webviewWebContents) {
-      // This is needed to prevent events of the same partition from being registered multiple times (when using custom sandboxes)
-      const webviewPartition = webviewWebContents.session.getStoragePath();
-      if (webviewPartition) {
-        // Check if the partition is already active
-        if (activePartitions.has(webviewPartition)) {
-          return;
-        }
-
-        // Add the partition to the active partitions
-        activePartitions.add(webviewPartition);
+      if (initializedWebContents.has(webviewWebContents)) {
+        return;
       }
-      // -----
+      initializedWebContents.add(webviewWebContents);
 
       // TODO: Modify this logic once https://github.com/electron/electron/issues/40674 is fixed
       // This is a workaround for the issue where the zoom in shortcut is not working
@@ -615,85 +762,6 @@ export default class Service {
           }
         });
       }
-
-      webviewWebContents.session.on('will-download', (event, item) => {
-        event.preventDefault();
-
-        const downloadId = uuidV4();
-
-        window['ferdium'].actions.app.addDownload({
-          id: downloadId,
-          serviceId: this.id,
-          filename: item.getFilename(),
-          url: item.getURL(),
-          savePath: item.getSavePath(),
-        });
-
-        item.addListener('updated', (event, state) => {
-          if (state === 'interrupted') {
-            debug('Download is interrupted but can be resumed');
-          } else if (state === 'progressing') {
-            if (item.isPaused()) {
-              debug('Download is paused');
-            } else {
-              debug(`Received bytes: ${item.getReceivedBytes()}`);
-            }
-          }
-          window['ferdium'].actions.app.updateDownload({
-            id: downloadId,
-            serviceId: this.id,
-            filename: basename(item.getSavePath()),
-            url: item.getURL(),
-            savePath: item.getSavePath(),
-            receivedBytes: item.getReceivedBytes(),
-            totalBytes: item.getTotalBytes(),
-            state,
-          });
-          debug('download updated', event, state);
-        });
-        item.addListener('done', (event, state) => {
-          debug('download done', event, state);
-          if (state === 'completed') {
-            debug('Download successfully');
-          } else {
-            if (state === 'cancelled' && item.getSavePath() === '') {
-              window['ferdium'].actions.app.removeDownload(downloadId);
-              debug('Download is cancelled');
-            }
-            debug(`Download failed: ${state}`);
-          }
-
-          window['ferdium'].actions.app.endedDownload({
-            id: downloadId,
-            serviceId: this.id,
-            receivedBytes: item.getReceivedBytes(),
-            totalBytes: item.getTotalBytes(),
-            state,
-          });
-        });
-
-        ipcRenderer.on('toggle-pause-download', (_, data) => {
-          debug('toggle-pause-download', item.isPaused(), item.getState());
-          if (data.downloadId === downloadId || data.downloadId === undefined) {
-            if (item.isPaused()) {
-              item.resume();
-            } else {
-              item.pause();
-            }
-          }
-          debug('toggle-pause-download', item.isPaused(), item.getState());
-          window['ferdium'].actions.app.updateDownload({
-            id: downloadId,
-            paused: item.isPaused(),
-          });
-        });
-
-        ipcRenderer.on('stop-download', (_, data) => {
-          if (data === undefined || downloadId === data.downloadId) {
-            item.cancel();
-          }
-        });
-      });
       webviewWebContents.on('login', (event, _, authInfo, callback) => {
         // const authCallback = callback;
         debug('browser login event', authInfo);

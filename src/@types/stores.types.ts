@@ -84,6 +84,8 @@ export interface AppStore extends TypedStore {
   accentColor: string;
   adaptableDarkMode: boolean;
   progressbarAccentColor: string;
+  webviewPaddingSize: number;
+  serviceWebviewBorderRadius: number;
   authRequestFailed: () => void;
   autoLaunchOnStart: () => void;
   automaticUpdates: boolean;
@@ -111,6 +113,7 @@ export interface AppStore extends TypedStore {
   reloadAfterResume: boolean;
   reloadAfterResumeTime: number;
   searchEngine: string;
+  showDisabledServices: boolean;
   translatorEngine: string;
   translatorLanguage: string;
   spellcheckerLanguage: string;
