@@ -21,7 +21,8 @@
   flex-direction: column;
   flex-shrink: 1;
   padding: 0;
-  gap: var(--webview-padding);
+  /* FORK: dense service rows must not inherit the webview's outer padding. */
+  gap: 0;
 
   .placeholder {
     height: 40px;

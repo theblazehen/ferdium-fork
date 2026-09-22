@@ -954,8 +954,7 @@ class EditSettingsForm extends Component<IProps, IState> {
 
                 <Select field={form.$('webviewPaddingSize')} />
 
-                <Select field={form.$('serviceWebviewBorderRadius')} />
-
+                {/* FORK: Webviews stay square; no rounded-corner setting. */}
                 <Select field={form.$('sidebarServicesLocation')} />
 
                 <Toggle {...form.$('useHorizontalStyle').bind()} />

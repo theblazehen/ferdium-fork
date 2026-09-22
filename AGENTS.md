@@ -6,7 +6,7 @@ Personal fork of Ferdium with Biscuit-style customizations.
 
 - **WM_CLASS must remain `ferdium`/`Ferdium`** — don't change `package.json` `name` or `productName`. herbstluftwm rules and tdrop keybindings match on this.
 - **Mark all fork changes with `// FORK:` comments** (or `/* FORK: */` for CSS/SCSS).
-- **Use mise for tooling** — `.mise.toml` at repo root manages node 22.18.0 and pnpm 10.14.0. Tasks: `mise run dev`, `mise run build`, `mise run typecheck`, `mise run lint`.
+- **Use mise for tooling** — `.mise.toml` at repo root manages node 24.20.0 and pnpm 12.3.4. Tasks: `mise run dev`, `mise run build`, `mise run typecheck`, `mise run lint`.
 - **Recipes submodule** — `recipes/` is a git submodule. Run `git submodule update --init --recursive`, then `pnpm --dir recipes install && pnpm --dir recipes package`, then `node esbuild.mjs` so `build/recipes/` gets populated.
 - **Keep service label font size at 12px** — density comes from padding/spacing/icon-size reductions, not font shrinkage.
 - **Dev mode** uses `~/.config/FerdiumDev/` (not `~/.config/Ferdium/`).
@@ -98,7 +98,7 @@ Files:
 
 - `src/index.ts` — `setWindowOpenHandler` returns `{ action: 'allow' }` for webview contents; removed conflicting module-level handler
 - `src/webview/recipe.ts` — removed `sendToHost('new-window')` short-circuit; all `window.open` calls go through `originalWindowOpen()`
-- `src/models/Service.ts` — removed dead `new-window` event listener (Electron 37); cleaned unused `isValidExternalURL` import
+- `src/models/Service.ts` — removed dead `new-window` event listener (Electron 44 no longer emits it); cleaned unused `isValidExternalURL` import
 
 ### 9. Google auth compatibility identity
 
@@ -155,6 +155,30 @@ Linux targets reduced to `dir` x64 only (was AppImage, deb, rpm, snap, tar.gz fo
 
 File: `electron-builder.yml`
 
+### 14. Guest font defaults matched to Firefox
+
+Upstream's "modern style" merge left webview guests on Chromium's defaults, so the same text rendered differently from Firefox. The fork sets the Firefox profile's effective families and sizes on every guest:
+
+- Proportional/serif: `DejaVu Sans` (16px) — matches the profile's `font.name.serif.x-western`
+- Sans-serif: `Ubuntu` — matches `font.name.sans-serif.x-western` (falls back to DejaVu Sans locally; Ubuntu is not installed)
+- Monospace: `DejaVu Sans Mono` (12px) — the profile sets `font.name.monospace.x-western` to Terminus, but that font ships only as bitmap strikes (`.otb`/`.pcf.gz`) and Chromium paints **zero ink** for it (A/B pixel comparison against DejaVu Sans Mono in a live Electron 44 guest: 0% vs 15.8% ink coverage). The outline DejaVu Sans Mono is the readable stand-in at Firefox's 12px monospace size.
+
+These are _defaults only_, so site-specified CSS is never overridden.
+
+Files:
+
+- `src/index.ts` — `guestFontPreferences` (`defaultFontFamily`, `defaultFontSize: 16`, `defaultMonospaceFontSize: 12`); applied in `will-attach-webview` (service and todos guests), the popup BrowserWindow options, and `open-browser-window` IPC. Electron deliberately leaves font prefs out of `getLastWebPreferences()`, so nested popups get them re-applied explicitly.
+
+### 15. Dense sidebar after the modern-style merge
+
+Upstream PR #1948 introduced `--webview-padding` gaps and service-webview corner cutouts that fought the fork's compact layout. The fork keeps its density:
+
+- `.tabs { gap: 0 }` — upstream's `gap: var(--webview-padding)` added 6px between the 28px dense rows
+- `src/styles/services.scss` — upstream's `radial-gradient` corner-cutout mixins removed (they are backgrounds, so the fork's `border-radius: 0` rules could not neutralize them)
+- Service-webview border radius setting removed entirely (`src/config.ts`, `EditSettingsScreen.tsx`, `EditSettingsForm.tsx`, `stores.types.ts`, `features/appearance/index.ts`, both locale files) — the fork is square-cornered by design, so upstream's control would have been inert
+- Sidebar action icons: `svg { width/height: 20px }` because MDI sizes its SVGs from rem, so `font-size` alone left them mismatched
+- `.sidebar__actions .sidebar__button { align-self: center }` so differently sized action buttons share one centreline
+
 ## Biscuit Migration
 
 `scripts/migrate-biscuit.py` imports tabs, groups, and session data (cookies, localStorage, IndexedDB) from Biscuit (`~/.config/biscuit/`) into FerdiumDev. Handles Biscuit's shared partitions by duplicating to separate Ferdium services. Run with `--execute --clean`.
@@ -167,4 +191,4 @@ File: `electron-builder.yml`
 - hlwm rule `instance=ferdium fullscreen=true` matches on WM_CLASS.
 - System ferdium at `/usr/bin/ferdium` is the upstream package — don't use it.
 - `node esbuild.mjs` compiles clean.
-- `tsc --noEmit` has 2 pre-existing type errors (unused params from fork changes in `autoUpdate.ts` and `appearance/index.ts`).
+- `tsc --noEmit` is clean.

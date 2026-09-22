@@ -5,9 +5,6 @@ import TopBarProgress from 'react-topbar-progress-indicator';
 import { pathExistsSync, readFileSync } from 'fs-extra';
 import {
   DEFAULT_APP_SETTINGS,
-  SERVICE_WEBVIEW_BORDER_RADIUS_DEFAULT,
-  SERVICE_WEBVIEW_BORDER_RADIUS_MAX,
-  SERVICE_WEBVIEW_BORDER_RADIUS_MIN,
   SIDEBAR_SERVICES_LOCATION_BOTTOMRIGHT,
   SIDEBAR_SERVICES_LOCATION_CENTER,
   SIDEBAR_SERVICES_LOCATION_TOPLEFT,
@@ -34,19 +31,6 @@ const normalizeWebviewPaddingSize = paddingSize => {
   return Math.min(
     WEBVIEW_PADDING_SIZE_MAX,
     Math.max(WEBVIEW_PADDING_SIZE_MIN, value),
-  );
-};
-
-const normalizeServiceWebviewBorderRadius = borderRadius => {
-  const value = Number(borderRadius);
-
-  if (!Number.isFinite(value)) {
-    return SERVICE_WEBVIEW_BORDER_RADIUS_DEFAULT;
-  }
-
-  return Math.min(
-    SERVICE_WEBVIEW_BORDER_RADIUS_MAX,
-    Math.max(SERVICE_WEBVIEW_BORDER_RADIUS_MIN, value),
   );
 };
 
@@ -131,6 +115,11 @@ const generateAccentStyle = accentColorStr => {
       border-right-color: ${accentColorStr};
     }
 
+    /* FORK: keep the selected service's left bar tied to the chosen accent. */
+    .tab-item.tab-item--horizontal.is-active {
+      box-shadow: inset 3px 0 0 0 ${accentColorStr};
+    }
+
     a.button:hover, button.button:hover {
       background: ${darkenAbsolute(accentColor, 10).hex()};
     }
@@ -165,13 +154,10 @@ const generateAccentStyle = accentColorStr => {
   `;
 };
 
-const generateWebviewLayoutStyle = (paddingSize, borderRadius) => {
+const generateWebviewLayoutStyle = paddingSize => {
   return `
     :root {
       --webview-padding: ${normalizeWebviewPaddingSize(paddingSize)}px;
-      --service-webview-border-radius: ${normalizeServiceWebviewBorderRadius(
-        borderRadius,
-      )}px;
     }
   `;
 };
@@ -389,7 +375,8 @@ const generateServiceRibbonWidthStyle = (
     .sidebar__button {
       /* FORK: Keep button font-size reasonable for wider sidebar */
       align-items: center;
-      align-self: flex-end;
+      /* FORK: center differently sized action buttons instead of bottom-aligning. */
+      align-self: center;
       display: flex;
       font-size: 22px !important;
       justify-content: center;
@@ -594,7 +581,6 @@ const generateStyle = (settings, app) => {
     showServiceName,
     useCompactWorkspaceDrawer,
     webviewPaddingSize,
-    serviceWebviewBorderRadius,
   } = settings;
 
   const { isFullScreen } = app;
@@ -611,10 +597,7 @@ const generateStyle = (settings, app) => {
     staleVerticalLink.remove();
   }
 
-  style += generateWebviewLayoutStyle(
-    webviewPaddingSize,
-    serviceWebviewBorderRadius,
-  );
+  style += generateWebviewLayoutStyle(webviewPaddingSize);
 
   if (
     accentColor.toLowerCase() !== DEFAULT_APP_SETTINGS.accentColor.toLowerCase()
@@ -768,7 +751,6 @@ export default function initAppearance(stores) {
       settings.all.app.showServiceName,
       settings.all.app.useCompactWorkspaceDrawer,
       settings.all.app.webviewPaddingSize,
-      settings.all.app.serviceWebviewBorderRadius,
       app.isFullScreen,
       workspaceStore.isWorkspaceDrawerOpen,
     ],

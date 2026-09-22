@@ -502,23 +502,6 @@ export const WEBVIEW_PADDING_SIZES = {
   [WEBVIEW_PADDING_SIZE_MAX]: 'Extremely large',
 };
 
-export const SERVICE_WEBVIEW_BORDER_RADIUS_MIN = 0;
-export const SERVICE_WEBVIEW_BORDER_RADIUS_XS = 2;
-export const SERVICE_WEBVIEW_BORDER_RADIUS_SMALL = 4;
-export const SERVICE_WEBVIEW_BORDER_RADIUS_DEFAULT = 6;
-export const SERVICE_WEBVIEW_BORDER_RADIUS_LARGE = 8;
-export const SERVICE_WEBVIEW_BORDER_RADIUS_XL = 10;
-export const SERVICE_WEBVIEW_BORDER_RADIUS_MAX = 12;
-export const SERVICE_WEBVIEW_BORDER_RADII = {
-  [SERVICE_WEBVIEW_BORDER_RADIUS_MIN]: 'None',
-  [SERVICE_WEBVIEW_BORDER_RADIUS_XS]: 'Very small',
-  [SERVICE_WEBVIEW_BORDER_RADIUS_SMALL]: 'Small',
-  [SERVICE_WEBVIEW_BORDER_RADIUS_DEFAULT]: 'Normal',
-  [SERVICE_WEBVIEW_BORDER_RADIUS_LARGE]: 'Large',
-  [SERVICE_WEBVIEW_BORDER_RADIUS_XL]: 'Very large',
-  [SERVICE_WEBVIEW_BORDER_RADIUS_MAX]: 'Extremely large',
-};
-
 // NOTE: For internationalized version, use getI18nConfigObjects().ICON_SIZES
 export const ICON_SIZES = {
   0: 'Very small icons',
@@ -593,8 +576,8 @@ export const DEFAULT_APP_SETTINGS = {
   spellcheckerLanguage: 'en-us',
   darkMode: false,
   navigationBarManualActive: false,
-  webviewPaddingSize: WEBVIEW_PADDING_SIZE_DEFAULT,
-  serviceWebviewBorderRadius: SERVICE_WEBVIEW_BORDER_RADIUS_DEFAULT,
+  // FORK: preserve the flush, square service layout rather than upstream's new 6px inset.
+  webviewPaddingSize: WEBVIEW_PADDING_SIZE_MIN,
   splitMode: false,
   splitColumns: 3,
   fallbackLocale: 'en-US',

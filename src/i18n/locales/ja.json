@@ -308,7 +308,6 @@
   "settings.app.form.searchEngine": "検索エンジン",
   "settings.app.form.sentry": "統計情報を送信",
   "settings.app.form.serviceRibbonWidth": "サイドバーの幅",
-  "settings.app.form.serviceWebviewBorderRadius": "Webview境界の角丸の半径",
   "settings.app.form.showDisabledServices": "無効化されたサービスのタブを表示する",
   "settings.app.form.showDragArea": "ドラッグ可能な領域をウィンドウに表示",
   "settings.app.form.showMessagesBadgesWhenMuted": "通知の無効時に未読メッセージ件数を表示する",

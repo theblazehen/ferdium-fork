@@ -26,6 +26,8 @@ Personal fork of [Ferdium](https://github.com/ferdium/ferdium-app) with Biscuit-
 - **In-app popup windows** — all webview popups (OAuth, target="\_blank", window.open) open as child BrowserWindows instead of system browser
 - **Stable Google service identity** — Google services use one Chromium-compatible UA for their complete lifetime, including popups and redirects, without mutating in-flight navigation
 - **Google sandbox session sharing** — Google services (YouTube, Gmail, Toggl) share a sandbox partition so auth cookies propagate; sign in via YouTube, Gmail picks up the session
+- **Firefox-matched guest fonts** — webview defaults are the profile's families (DejaVu Sans / Ubuntu / DejaVu Sans Mono) at Firefox's 16px proportional and 12px monospace sizes; site CSS still wins. Terminus is skipped because its bitmap-only strikes paint blank in Chromium
+- **Dense sidebar preserved** — upstream's modern-style webview padding gap and service-webview corner-radius setting stay disabled; service webviews remain square with 0px row gaps
 - **Build optimization** — Linux targets reduced to `dir` x64 only for fast personal builds
 
 [![Open Collective backers](https://img.shields.io/static/v1?label=Contribute%20on%20Open%20Collective&message=Donate%20to%20Ferdium&color=9cf&logo=open-collective)](https://opencollective.com/ferdium#category-CONTRIBUTE)

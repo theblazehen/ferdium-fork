@@ -54,18 +54,18 @@ import { appId } from './package.json';
 
 import { asarPath } from './helpers/asar-helpers';
 import { checkIfCertIsPresent } from './helpers/certs-helpers';
-import { translateTo } from './helpers/translation-helpers';
-import { openExternalUrl } from './helpers/url-helpers';
-import userAgent, {
-  isGoogleUrl,
-  userAgentWithoutChromeVersion,
-} from './helpers/userAgent-helpers';
 import {
   composeSessionHeaders,
   ensureSessionHeaderRules,
   getSessionHeaderRules,
   registerSessionHeaderRule,
 } from './helpers/session-header-rules';
+import { translateTo } from './helpers/translation-helpers';
+import { openExternalUrl } from './helpers/url-helpers';
+import userAgent, {
+  isGoogleUrl,
+  userAgentWithoutChromeVersion,
+} from './helpers/userAgent-helpers';
 import generatedTranslations from './i18n/translations';
 import { darkThemeGrayDarkest } from './themes/legacy';
 
@@ -239,6 +239,22 @@ const webRTCIPHandlingPolicy = retrieveSettingValue(
   | 'default_public_interface_only'
   | 'default_public_and_private_interfaces';
 
+// FORK: Match this machine's Firefox defaults without overriding website CSS.
+// Firefox's proportional default is serif; its saved families are DejaVu Sans,
+// Ubuntu (locally falls back to DejaVu Sans), and Terminus. Linux defaults to
+// 16px proportional / 12px monospace. These preferences apply only to guests.
+const guestFontPreferences: Electron.WebPreferences = {
+  defaultFontFamily: {
+    standard: 'DejaVu Sans',
+    serif: 'DejaVu Sans',
+    sansSerif: 'Ubuntu',
+    // FORK: Firefox's bitmap-only Terminus renders blank in Chromium; use an outline fallback.
+    monospace: 'DejaVu Sans Mono',
+  },
+  defaultFontSize: 16,
+  defaultMonospaceFontSize: 12,
+};
+
 const createWindow = () => {
   // Remember window size
   const mainWindowState = windowStateKeeper({
@@ -302,6 +318,12 @@ const createWindow = () => {
 
   enableWebContents(mainWindow.webContents);
   mainWindow.webContents.setWebRTCIPHandlingPolicy(webRTCIPHandlingPolicy);
+
+  // FORK: A webview attribute cannot express the nested defaultFontFamily map.
+  // Set the defaults before attaching service and todos guests instead.
+  mainWindow.webContents.on('will-attach-webview', (_event, webPreferences) => {
+    Object.assign(webPreferences, guestFontPreferences);
+  });
 
   app.on('browser-window-created', (_, window) => {
     enableWebContents(window.webContents);
@@ -394,6 +416,7 @@ const createWindow = () => {
           ...popupWindowOptions(details.features, isPositionValid),
           webPreferences: isLinux
             ? {
+                ...guestFontPreferences,
                 session: contents.session,
                 preload: join(
                   __dirname,
@@ -403,7 +426,7 @@ const createWindow = () => {
                 contextIsolation: true,
                 sandbox: true,
               }
-            : { session: contents.session },
+            : { ...guestFontPreferences, session: contents.session },
         },
         createWindow: options => {
           const child = new BrowserWindow({
@@ -843,6 +866,7 @@ ipcMain.on('open-browser-window', (_e, { url, serviceId }) => {
     parent: mainWindow,
     fullscreenable: false,
     webPreferences: {
+      ...guestFontPreferences,
       session: serviceSession,
     },
   });
@@ -1052,10 +1076,11 @@ app.on('web-contents-created', (_createdEvent, contents) => {
 
     return {
       action: 'allow',
-      overrideBrowserWindowOptions: popupWindowOptions(
-        features,
-        isPositionValid,
-      ),
+      // FORK: Electron does not inherit font preferences into nested popups.
+      overrideBrowserWindowOptions: {
+        ...popupWindowOptions(features, isPositionValid),
+        webPreferences: { ...guestFontPreferences },
+      },
     };
   });
 });

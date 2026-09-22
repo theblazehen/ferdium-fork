@@ -263,6 +263,12 @@ body.win32:not(.isFullScreen) .app .app__content {
       line-height: 1;
       /* FORK: smaller action bar icons */
       font-size: 20px !important;
+
+      /* FORK: size the SVG itself; font-size does not control MDI's rem sizing. */
+      svg {
+        width: 20px !important;
+        height: 20px !important;
+      }
     }
   }
 

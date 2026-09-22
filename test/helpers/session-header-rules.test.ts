@@ -1,10 +1,10 @@
 import {
+  type HeaderRule,
   composeSessionHeaders,
   ensureSessionHeaderRules,
   getSessionHeaderRules,
   matchesUrlPattern,
   registerSessionHeaderRule,
-  type HeaderRule,
 } from '../../src/helpers/session-header-rules';
 import {
   isGoogleUrl,
