@@ -179,7 +179,7 @@ describe('session header rule composition', () => {
       ).toBe(false);
     });
 
-    it('returns false for an unparseable url', () => {
+    it('returns false for an unparsable url', () => {
       expect(matchesUrlPattern('not a url', 'https://example.com/*')).toBe(
         false,
       );
